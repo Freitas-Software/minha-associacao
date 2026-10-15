@@ -1,0 +1,1 @@
+ALTER TABLE "users" ALTER COLUMN "phone" SET DATA TYPE varchar(11) USING "phone"::varchar(11);
