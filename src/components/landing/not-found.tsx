@@ -85,6 +85,7 @@ export function LandingNotFound() {
           height={1086}
           sizes="(min-width: 1376px) 644px, (min-width: 768px) 50vw, 100vw"
           className="mt-8 h-auto w-full rounded-3xl md:mt-0"
+          loading="eager"
         />
       </section>
       <section className="pt-4 pb-[30px]" aria-labelledby="suggestions-title">
