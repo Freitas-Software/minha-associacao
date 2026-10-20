@@ -1,8 +1,8 @@
 import Link from 'next/link'
+import { ThemeToggle } from '@/components/theme/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { LandingBrand } from './brand'
 import { landingNavigation } from './navigation'
-import { LandingThemeToggle } from './theme-toggle'
 
 export function LandingHeader() {
   return (
@@ -27,7 +27,7 @@ export function LandingHeader() {
           </ul>
         </nav>
         <div className="flex items-center gap-3">
-          <LandingThemeToggle />
+          <ThemeToggle />
           <Button
             nativeButton={false}
             variant="outline"

@@ -3,8 +3,8 @@ import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { ThemeColorSync } from '@/components/theme-color-sync'
-import { ThemeProvider } from '@/components/theme-provider'
+import { ThemeColorSync } from '@/components/theme/theme-color-sync'
+import { ThemeProvider } from '@/components/theme/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 
 const fontSans = Inter({

@@ -1,4 +1,5 @@
 import Image from 'next/image'
+
 export function LandingAbout() {
   return (
     <section id="como-funciona" className="scroll-mt-8">

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { AppShell } from '@/components/application/app-shell'
+import { AppShell } from '../../../components/application/app-shell'
 
 export const metadata: Metadata = {
   title: {
