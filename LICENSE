@@ -1,0 +1,134 @@
+# LICENÇA PROPRIETÁRIA DE SOFTWARE
+## Minha Associação — Versão 1.0
+
+Copyright © 2026 Eric Freitas Sampaio
+
+Todos os direitos reservados.
+
+### 1. Objeto
+
+Esta licença estabelece as condições de acesso, utilização, reprodução, modificação e distribuição do código-fonte, documentação, recursos visuais e demais componentes de titularidade do responsável pelo software denominado **Minha Associação**, doravante denominado SOFTWARE.
+
+O SOFTWARE é disponibilizado sob regime proprietário, não constituindo software livre ou de código aberto.
+
+### 2. Titularidade e propriedade intelectual
+
+Os direitos patrimoniais sobre o SOFTWARE pertencem ao titular identificado neste documento, observados os direitos de terceiros, os contratos aplicáveis e a legislação vigente.
+
+Nenhuma disposição desta licença transfere a propriedade intelectual do SOFTWARE aos desenvolvedores, colaboradores ou demais pessoas autorizadas a acessar o repositório.
+
+A titularidade das contribuições desenvolvidas por terceiros deverá observar os respectivos contratos de trabalho, prestação de serviços ou instrumentos específicos de cessão de direitos.
+
+### 3. Autorização de uso interno
+
+O titular concede aos desenvolvedores expressamente autorizados uma licença limitada, não exclusiva, intransferível e revogável, exclusivamente para atividades relacionadas ao desenvolvimento e à manutenção do SOFTWARE.
+
+São permitidas, dentro desse escopo:
+
+a) Acessar e consultar o código-fonte.
+
+b) Reproduzir o código em ambientes de desenvolvimento autorizados.
+
+c) Desenvolver, modificar, corrigir e testar funcionalidades.
+
+d) Criar branches, commits e pull requests nos repositórios autorizados.
+
+e) Executar o SOFTWARE em ambientes de desenvolvimento, homologação e produção autorizados pelo titular.
+
+f) Elaborar documentação técnica relacionada ao projeto.
+
+Essas permissões não autorizam exploração independente do SOFTWARE.
+
+### 4. Restrições
+
+Sem autorização prévia e expressa do titular, é proibido:
+
+a) Publicar ou disponibilizar o código-fonte em repositórios públicos.
+
+b) Redistribuir, sublicenciar, vender ou comercializar o SOFTWARE ou suas partes protegidas.
+
+c) Compartilhar o código-fonte com terceiros não autorizados.
+
+d) Reutilizar partes protegidas do SOFTWARE em projetos pessoais, comerciais ou de terceiros.
+
+e) Criar produtos derivados para exploração independente do projeto, ressalvados os direitos legalmente assegurados.
+
+f) Remover ou alterar avisos de direitos autorais e identificação de titularidade.
+
+g) Divulgar credenciais, segredos comerciais, documentação confidencial ou informações internas obtidas em razão do acesso ao projeto.
+
+h) Utilizar o SOFTWARE fora dos limites estabelecidos nesta licença ou em autorização específica.
+
+### 5. Confidencialidade
+
+O código-fonte não publicado, a arquitetura interna, as credenciais, as configurações de infraestrutura e as informações comerciais e técnicas identificadas como confidenciais deverão ser protegidos contra divulgação não autorizada.
+
+O acesso ao repositório privado não constitui autorização para disponibilizar seu conteúdo fora dos ambientes aprovados pelo titular.
+
+As obrigações específicas de confidencialidade poderão ser complementadas por instrumentos contratuais próprios.
+
+### 6. Contribuições e modificações
+
+Os colaboradores autorizados poderão propor e implementar modificações conforme as práticas e permissões estabelecidas pela equipe de desenvolvimento.
+
+A incorporação de uma contribuição ao repositório não implica, por si só, cessão automática e irrestrita dos direitos patrimoniais de seu autor.
+
+Quando necessário, a cessão ou o licenciamento dos direitos relativos às contribuições deverá ser formalizado em instrumento específico, respeitando a legislação aplicável.
+
+### 7. Componentes de terceiros
+
+O SOFTWARE poderá utilizar bibliotecas, frameworks e outros componentes sujeitos a licenças próprias.
+
+Esta licença não altera, substitui ou restringe os direitos concedidos pelas licenças desses componentes.
+
+Os desenvolvedores deverão respeitar as obrigações aplicáveis às dependências de terceiros, inclusive quanto a avisos de direitos autorais, atribuição e distribuição.
+
+### 8. Segurança e proteção de informações
+
+Os usuários autorizados deverão adotar medidas razoáveis de segurança para proteger o código-fonte, as credenciais e as informações acessadas durante o desenvolvimento.
+
+É proibida a utilização não autorizada de dados pessoais ou informações confidenciais em ambientes externos, ferramentas de terceiros ou serviços de inteligência artificial.
+
+O tratamento de dados pessoais deverá observar a legislação aplicável, inclusive a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018).
+
+### 9. Revogação e encerramento do acesso
+
+A autorização de acesso e uso interno poderá ser revogada pelo titular, observados os contratos e a legislação aplicáveis.
+
+Encerrada a autorização, o colaborador deverá cessar o uso do SOFTWARE e eliminar as cópias sob seu controle que não tenha fundamento legal ou contratual para conservar.
+
+As obrigações de confidencialidade e respeito à propriedade intelectual permanecerão aplicáveis nos limites legais e contratuais.
+
+### 10. Garantias e responsabilidades
+
+O SOFTWARE é disponibilizado aos colaboradores para as atividades internas autorizadas, no estado em que se encontra, sem garantias adicionais além daquelas expressamente previstas em contrato ou exigidas pela legislação aplicável.
+
+As responsabilidades decorrentes da utilização, modificação ou distribuição não autorizada serão apuradas conforme a legislação vigente e os instrumentos contratuais aplicáveis.
+
+Nenhuma disposição desta licença exclui responsabilidades que não possam ser afastadas por lei.
+
+### 11. Legislação aplicável
+
+Esta licença será interpretada de acordo com as leis da República Federativa do Brasil, especialmente:
+
+- Lei nº 9.609/1998 — Proteção da propriedade intelectual de programas de computador.
+- Lei nº 9.610/1998 — Direitos autorais.
+- Lei nº 13.709/2018 — Lei Geral de Proteção de Dados Pessoais, quando aplicável.
+
+Eventuais controvérsias serão submetidas à autoridade judicial competente, observadas as regras legais de competência.
+
+### 12. Disposições finais
+
+O acesso ao código-fonte não concede direitos de propriedade, comercialização, redistribuição ou exploração além dos expressamente autorizados.
+
+Permissões adicionais deverão ser concedidas pelo titular mediante autorização expressa.
+
+Esta licença não substitui contratos de desenvolvimento, instrumentos de cessão de direitos patrimoniais, acordos de confidencialidade ou outros documentos necessários à formalização das relações entre as partes.
+
+---
+
+**Minha Associação**
+
+Licença proprietária — Todos os direitos reservados.
+
+Versão 1.0 — Outubro de 2026.
