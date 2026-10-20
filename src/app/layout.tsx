@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import { ThemeColorSync } from '@/components/theme-color-sync'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 
@@ -32,7 +33,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#3b82f6',
 }
 
 export default function RootLayout({
@@ -51,6 +51,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <ThemeColorSync />
           {children}
           <Toaster />
         </ThemeProvider>

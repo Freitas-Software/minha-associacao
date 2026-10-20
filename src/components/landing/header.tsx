@@ -11,7 +11,7 @@ export function LandingHeader() {
         <LandingBrand />
         <nav
           aria-label="Navegação principal"
-          className="order-3 w-full md:order-none md:w-auto"
+          className="order-3 w-full md:order-0 md:w-auto"
         >
           <ul className="flex flex-wrap gap-x-6 gap-y-3">
             {landingNavigation.map(({ href, label }) => (
