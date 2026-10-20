@@ -5,7 +5,7 @@ if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is necessary')
 
 export default defineConfig({
   out: './drizzle',
-  schema: './app/db/schema/index.ts',
+  schema: './src/db/schema/index.ts',
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL,

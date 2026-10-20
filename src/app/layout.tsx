@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/next'
@@ -22,8 +22,17 @@ const fontMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Minha Associação',
-  description: '',
+  title: {
+    default: 'Minha Associação',
+    template: '%s | Minha Associação',
+  },
+  description: 'Plataforma de gestão para associações e organizações.',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#3b82f6',
 }
 
 export default function RootLayout({

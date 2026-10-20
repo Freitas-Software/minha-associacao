@@ -8,6 +8,6 @@ if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is necessary')
 const relations = defineRelations(schema)
 
 export const db = drizzle(process.env.DATABASE_URL, {
-  logger: true,
+  logger: false,
   relations,
 })
