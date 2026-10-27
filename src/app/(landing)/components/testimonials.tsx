@@ -3,8 +3,8 @@ import { Card, CardContent } from '@/components/ui/card'
 
 export function LandingTestimonials() {
   return (
-    <section id="depoimentos" className="scroll-mt-8">
-      <div className="mx-auto max-w-[1376px] px-5 pt-10 pb-12 sm:px-8">
+    <section id="depoimentos">
+      <div className="mx-auto flex min-h-svh max-w-[1376px] flex-col justify-center px-5 py-14 sm:px-8">
         <div className="mb-7 text-center">
           <p className="mb-3 text-xs font-medium tracking-wider text-primary sm:text-sm">
             ESPAÇO PARA HISTÓRIAS REAIS

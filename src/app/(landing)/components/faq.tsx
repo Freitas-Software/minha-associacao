@@ -18,8 +18,8 @@ const questions = [
 
 export function LandingFaq() {
   return (
-    <section id="faq" className="scroll-mt-8">
-      <div className="mx-auto max-w-3xl px-5 pt-4 pb-14 sm:px-8">
+    <section id="faq">
+      <div className="mx-auto flex min-h-svh max-w-3xl flex-col justify-center px-5 py-14 sm:px-8">
         <h2 className="mb-6 text-center text-3xl font-bold tracking-tight">
           Perguntas frequentes
         </h2>
