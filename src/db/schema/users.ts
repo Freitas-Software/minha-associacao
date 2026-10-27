@@ -6,10 +6,13 @@ export const users = pgTable('users', {
   id: uuid()
     .primaryKey()
     .$defaultFn(() => uuidv7()),
-  accountId: uuid().references(() => accounts.id),
+  accountId: uuid()
+    .references(() => accounts.id)
+    .unique(),
   name: varchar({ length: 255 }).notNull(),
   documentNumber: varchar('document_number', { length: 11 }).notNull().unique(),
   email: varchar({ length: 55 }).notNull().unique(),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   phone: varchar({ length: 11 }).notNull().unique(),
   birthDate: date('birth_date').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
