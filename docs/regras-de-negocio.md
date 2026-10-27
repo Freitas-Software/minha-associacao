@@ -28,6 +28,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - O operador autorizado pode informar um email de contato, considerado confiável para ativação da conta.
 - O operador autorizado pode corrigir esse contato enquanto não houver conta vinculada. Depois disso, vale a edição exclusiva pelo titular.
 - Cadastros existentes devem ser reaproveitados. Um operador de outra organização não recebe, só por informar um CPF, autorização para sobrescrever o perfil global.
+- Quando mais de uma organização pré-cadastra a mesma pessoa com contatos diferentes, o perfil global não é sobrescrito automaticamente. A divergência é registrada e o titular a resolve ao assumir a conta.
 - Para ativar uma pessoa pré-cadastrada, enviar um link de uso único ao email já registrado em users. O visitante não pode trocar esse endereço durante a tentativa de cadastro.
 - Pelo link validado, a pessoa define sua senha e conclui a criação da conta vinculada ao perfil existente.
 - A confirmação de email antes da criação da conta e a definição da senha pelo link também valem para cadastro público e ingresso por convite compartilhado.
@@ -38,9 +39,11 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - O suporte inicial é a associações privadas brasileiras com CNPJ elegível. Cooperativas ficam para uma etapa futura.
 - Somente o presidente da associação ou um membro da administração da plataforma pode iniciar o cadastro de uma organização.
 - CNPJ deve ser validado externamente e não pode identificar organizações duplicadas. A razão social vem da consulta; a sigla pode ser ajustada.
-- A intenção é comprovar a autoridade do presidente por um vínculo entre o CPF autenticado e o CNPJ. O usuário indicou a BrasilAPI como fonte pretendida; a viabilidade dessa comprovação ainda precisa ser verificada.
+- O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar a existência do CNPJ. A viabilidade de comprovar o vínculo entre o CPF autenticado e o CNPJ ainda precisa ser verificada.
+- Enquanto o vínculo CPF/CNPJ não estiver comprovado por fonte confiável, o administrador da plataforma valida a ata de eleição para reconhecer a autoridade do presidente.
 - Após a validação, o sistema sugere e aplica por padrão a inclusão do criador como presidente com acesso completo, informando esse comportamento. O usuário pode alterar essa configuração.
 - A administração da plataforma pode cadastrar somente dados básicos. Alguém da diretoria deverá concluir a configuração posteriormente.
+- Quando o administrador da plataforma inicia a organização, ele indica um CPF para receber uma concessão temporária de configuração. Essa concessão não é vínculo nem acesso completo e termina com a ativação.
 - A organização começa em configuração (PROVISIONING). O fluxo inclui dados institucionais e CNPJ, estatuto, ata de eleição, configuração dos cargos e composição da diretoria.
 - Antes da ativação, deve existir exatamente um cargo padrão de ingresso ativo, sem acesso completo e fora da diretoria; pelo menos um cargo ativo com acesso completo; e ocupantes ou convites individuais válidos para os cargos ativos da diretoria.
 - A organização só se torna operacional quando houver pelo menos um membro ativo com cargo ativo de acesso completo. Não é necessário que todos os demais convites da diretoria tenham sido aceitos.
@@ -108,12 +111,10 @@ Confirmadas pelo responsável pelo produto em 27/10/2026. Registram o mecanismo 
 
 Estes pontos não são regras já resolvidas nem autorização para implementar por suposição:
 
-- Verificar se a BrasilAPI fornece dados suficientes e confiáveis para comprovar o vínculo CPF/CNPJ pretendido. Não considerar o mecanismo comprovado apenas porque a regra foi desejada.
+- Verificar se a BrasilAPI fornece dados suficientes e confiáveis para comprovar o vínculo CPF/CNPJ. A consulta de CNPJ e a validação da ata pelo administrador da plataforma são o caminho provisório confirmado.
 - Definir recuperação de acesso quando o titular não controla mais o email cadastrado, já que o fluxo confirmado usa somente o email vinculado.
 - Avaliar proteção adicional contra abuso e concorrência além dos limites, do uso único e da renovação confirmados.
-- Definir como alguém da diretoria recebe o acesso de configuração quando a organização é iniciada pelo administrador da plataforma.
 - Definir os limites dos poderes administrativos além do cadastro básico de organizações.
-- Esclarecer conflitos de contato em perfis globais sem conta, inclusive quando mais de uma organização pré-cadastra a mesma pessoa.
 - Não importar todas as regras financeiras detalhadas, prazos de convites ou outras funcionalidades antigas sem confirmação específica.
 
 ## Como manter este documento

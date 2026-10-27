@@ -1,8 +1,8 @@
 # Modelo de domínio — organizações, cargos, permissões e convites
 
-**Status:** rascunho para decisão — 27/10/2026.
+**Status:** aprovado para implementação em 27/10/2026. As três primeiras decisões foram confirmadas; as demais permanecem pendentes.
 
-Este documento propõe um modelo técnico para a próxima etapa. Ele **não substitui** [regras-de-negocio.md](regras-de-negocio.md) e não registra decisões confirmadas. Onde houver divergência, prevalecem as regras de negócio e a decisão explícita do responsável pelo produto.
+Este documento registra o modelo aprovado e as decisões ainda abertas. Ele **não substitui** [regras-de-negocio.md](regras-de-negocio.md); onde houver divergência, prevalecem as regras de negócio e a decisão explícita do responsável pelo produto.
 
 ## 1. Objetivo
 
@@ -200,7 +200,7 @@ Propriedades:
 - Não é vínculo permanente nem cargo.
 - Não concede acesso completo fora do estado `provisioning`.
 - Deve deixar de valer automaticamente quando a organização for ativada.
-- A forma como alguém da diretoria recebe esse acesso quando a organização é iniciada pelo administrador da plataforma continua pendente.
+- A concessão é criada para o CPF indicado pelo administrador da plataforma e deixa de valer na ativação.
 
 ### 3.10 `organization_documents`
 
@@ -363,20 +363,25 @@ Regras de decisão:
 - Auditoria visível.
 - Limites de poder definidos.
 
-## 8. Decisões pendentes
+## 8. Decisões
+
+### 8.1 Confirmadas
+
+1. O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar sua existência. Enquanto o vínculo CPF/CNPJ não estiver comprovado por fonte confiável, o administrador da plataforma valida a ata de eleição para reconhecer a autoridade do presidente.
+2. Quando o administrador da plataforma inicia uma organização, ele indica um CPF para receber uma concessão temporária de configuração. A concessão não é vínculo nem acesso completo e termina com a ativação.
+3. Contatos divergentes em perfis globais sem conta não são sobrescritos automaticamente. A divergência é registrada para o titular resolver ao assumir a conta.
+
+### 8.2 Pendentes
 
 Estas decisões bloqueiam partes do modelo e não devem ser resolvidas por suposição:
 
-1. A BrasilAPI fornece dados suficientes para comprovar o vínculo entre CPF autenticado e CNPJ? Qual será o critério de autoridade do presidente?
-2. Como alguém da diretoria recebe acesso de configuração quando a organização é iniciada pelo administrador da plataforma?
-3. Quais são os limites dos poderes do administrador da plataforma além do cadastro básico?
-4. Como resolver conflitos de contato em perfis globais sem conta quando mais de uma organização pré-cadastra a mesma pessoa?
-5. Quais são os prazos de expiração, limites de uso e política de reenvio dos convites?
-6. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
-7. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
-8. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
-9. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
-10. Qual é o formato de auditoria exigido para intervenções da plataforma?
+1. Quais são os limites dos poderes do administrador da plataforma além do cadastro básico?
+2. Quais são os prazos de expiração, limites de uso e política de reenvio dos convites?
+3. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
+4. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
+5. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
+6. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
+7. Qual é o formato de auditoria exigido para intervenções da plataforma?
 
 ## 9. Riscos e cuidados
 
