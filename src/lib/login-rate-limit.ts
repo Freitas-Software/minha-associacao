@@ -32,10 +32,10 @@ export async function reserveLoginAttempt(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${ipKey}, 0))`,
     )
-    const clock = await tx.execute<{ now: Date }>(
+    const clock = await tx.execute<{ now: string | Date }>(
       sql`select clock_timestamp() as now`,
     )
-    const window = getLoginWindow(clock.rows[0].now)
+    const window = getLoginWindow(new Date(clock.rows[0].now))
 
     const [ipBucket] = await tx
       .select()

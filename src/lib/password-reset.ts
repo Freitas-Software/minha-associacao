@@ -26,10 +26,10 @@ export async function preparePasswordReset(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
     )
-    const clock = await tx.execute<{ now: Date }>(
+    const clock = await tx.execute<{ now: string | Date }>(
       sql`select clock_timestamp() as now`,
     )
-    const now = clock.rows[0].now
+    const now = new Date(clock.rows[0].now)
     const [bucket] = await tx
       .select()
       .from(loginRateLimits)
@@ -142,10 +142,10 @@ export async function completePasswordReset(
       .where(eq(passwordResetRequests.tokenHash, tokenHash))
       .limit(1)
       .for('update')
-    const clock = await tx.execute<{ now: Date }>(
+    const clock = await tx.execute<{ now: string | Date }>(
       sql`select clock_timestamp() as now`,
     )
-    const now = clock.rows[0].now
+    const now = new Date(clock.rows[0].now)
     if (
       !user ||
       !request ||
