@@ -1,5 +1,6 @@
 import 'server-only'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { after } from 'next/server'
 import { db } from '@/db'
 import { accounts, registrationRequests, users } from '@/db/schema'
 import { sendEmail } from '@/lib/email'
@@ -133,19 +134,26 @@ export async function requestRegistration(
 
   confirmationUrl.searchParams.set('token', pendingEmail.token)
 
-  await sendEmail({
-    to: pendingEmail.to,
-    subject: 'Conclua seu cadastro - Minha Associação',
-    text: [
-      'Recebemos uma solicitação de cadastro no Minha Associação.',
-      '',
-      'Para confirmar seu email e definir sua senha, acesse:',
-      confirmationUrl.toString(),
-      '',
-      'Este link é válido por 30 minutos e pode ser usado por uma única vez.',
-      '',
-      'Se você não solicitou este cadastro, ignore esta mensagem.',
-    ].join('\n'),
+  // Defer delivery so response latency does not reveal whether the CPF already exists.
+  after(async () => {
+    try {
+      await sendEmail({
+        to: pendingEmail.to,
+        subject: 'Conclua seu cadastro - Minha Associação',
+        text: [
+          'Recebemos uma solicitação de cadastro no Minha Associação.',
+          '',
+          'Para confirmar seu email e definir sua senha, acesse:',
+          confirmationUrl.toString(),
+          '',
+          'Este link é válido por 30 minutos e pode ser usado por uma única vez.',
+          '',
+          'Se você não solicitou este cadastro, ignore esta mensagem.',
+        ].join('\n'),
+      })
+    } catch {
+      console.error('[requestRegistration]', { stage: 'email' })
+    }
   })
 
   return { status: 'link-sent' }
