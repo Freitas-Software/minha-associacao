@@ -1,6 +1,6 @@
 # Regras de negócio — Minha Associação
 
-Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
+Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
 
 ## Escopo e autoridade
 
@@ -8,7 +8,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - O repositório antigo, https://github.com/Freitas-Software/minha-associacao-old, é uma referência histórica. Suas regras e estruturas não devem ser importadas automaticamente.
 - Remoções e diferenças escolhidas para a nova versão são decisões de negócio; não restaurar funcionalidades ou campos antigos por suposição.
 - Os campos atuais de users e accounts foram escolhidos pelo usuário e devem ser preservados. Uma proposta de mudança exige explicação e decisão explícita, não alteração automática.
-- A autenticação e a autorização serão implementadas pelo projeto, sem biblioteca externa de autenticação. Isso não significa reimplementar primitivas criptográficas; o mecanismo técnico de sessão ainda precisa ser definido.
+- A autenticação e a autorização serão implementadas pelo projeto, sem biblioteca externa de autenticação. Isso não significa reimplementar primitivas criptográficas; o mecanismo técnico de sessão está definido nas decisões técnicas confirmadas.
 - Não há dados antigos a migrar. Após a versão web, serão desenvolvidos aplicativos nativos, primeiro Android e depois iOS.
 
 ## Identidade, perfil e conta
@@ -91,14 +91,23 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - O navegador deve manter login entre visitas, permitir sessões em vários dispositivos e oferecer encerramento das demais sessões.
 - A futura API deverá ser adequada aos clientes nativos, sem presumir agora um formato específico de tokens.
 
+## Decisões técnicas confirmadas
+
+Confirmadas pelo responsável pelo produto em 27/10/2026. Registram o mecanismo técnico escolhido; não substituem as regras de negócio acima.
+
+- Sessão: token opaco de 256 bits, armazenado apenas como hash SHA-256. Validade absoluta de 30 dias e inatividade de 7 dias, com renovação da janela de inatividade durante o uso sem estender a validade absoluta. Logout e encerramento das demais sessões revogam os registros correspondentes.
+- Tokens de cadastro e recuperação de senha: 256 bits, armazenados apenas como hash SHA-256, com validade de 30 minutos, uso único, reenvio permitido após 60 segundos e invalidação dos tokens anteriores.
+- Recuperação de senha: somente pelo email já vinculado à conta; a conclusão revoga todas as sessões da conta.
+- Senhas: de 15 a 128 caracteres, com espaços permitidos. Hash Argon2id com 19 MiB de memória, 2 iterações, paralelismo 1 e 32 bytes de saída.
+- Limites de tentativas: 30 por IP e 5 por CPF combinado com IP, em janelas fixas de 15 minutos.
+
 ## Decisões técnicas e detalhes pendentes
 
 Estes pontos não são regras já resolvidas nem autorização para implementar por suposição:
 
 - Verificar se a BrasilAPI fornece dados suficientes e confiáveis para comprovar o vínculo CPF/CNPJ pretendido. Não considerar o mecanismo comprovado apenas porque a regra foi desejada.
-- Definir recuperação de senha e de acesso quando o titular não controla mais o email cadastrado.
-- Definir expiração, reenvio, invalidação e armazenamento dos tokens de confirmação; credenciais temporárias anteriores à confirmação; proteção contra abuso e concorrência.
-- Definir mecanismo de sessão, durações, renovação e revogação. Sessão opaca persistida foi uma recomendação do agente, não uma escolha técnica aprovada pelo usuário.
+- Definir recuperação de acesso quando o titular não controla mais o email cadastrado, já que o fluxo confirmado usa somente o email vinculado.
+- Avaliar proteção adicional contra abuso e concorrência além dos limites, do uso único e da renovação confirmados.
 - Definir como alguém da diretoria recebe o acesso de configuração quando a organização é iniciada pelo administrador da plataforma.
 - Definir os limites dos poderes administrativos além do cadastro básico de organizações.
 - Esclarecer conflitos de contato em perfis globais sem conta, inclusive quando mais de uma organização pré-cadastra a mesma pessoa.
