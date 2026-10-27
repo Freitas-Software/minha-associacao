@@ -100,6 +100,9 @@ Confirmadas pelo responsável pelo produto em 27/10/2026. Registram o mecanismo 
 - Recuperação de senha: somente pelo email já vinculado à conta; a conclusão revoga todas as sessões da conta.
 - Senhas: de 15 a 128 caracteres, com espaços permitidos. Hash Argon2id com 19 MiB de memória, 2 iterações, paralelismo 1 e 32 bytes de saída.
 - Limites de tentativas: 30 por IP e 5 por CPF combinado com IP, em janelas fixas de 15 minutos.
+- Vínculo entre pessoa e conta: `users.accountId` é único, impedindo que uma conta seja vinculada a mais de uma pessoa.
+- Confirmação de email: registrada em `users.email_verified_at` na conclusão do cadastro.
+- Limpeza operacional: sessões, tokens e contadores expirados são removidos após 30 dias por rotina diária.
 
 ## Decisões técnicas e detalhes pendentes
 
