@@ -2,8 +2,8 @@ import Image from 'next/image'
 
 export function LandingAbout() {
   return (
-    <section id="como-funciona" className="scroll-mt-8">
-      <div className="mx-auto grid max-w-[1376px] items-center gap-12 px-5 py-14 sm:px-8 lg:grid-cols-2 lg:py-10">
+    <section id="como-funciona">
+      <div className="mx-auto grid min-h-svh max-w-[1376px] content-center items-center gap-12 px-5 py-14 sm:px-8 lg:grid-cols-2 lg:py-10">
         <div>
           <p className="mb-3 text-xs font-medium tracking-widest text-primary sm:text-sm">
             MAIS TEMPO PARA O QUE REALMENTE IMPORTA

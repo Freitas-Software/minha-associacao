@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono, Source_Serif_4 } from 'next/font/google'
 import './globals.css'
-import { Analytics } from '@vercel/analytics/next'
-import { SpeedInsights } from '@vercel/speed-insights/next'
+import { Suspense } from 'react'
+import { SiteTelemetry } from '@/components/site-telemetry'
 import { ThemeColorSync } from '@/components/theme/theme-color-sync'
 import { ThemeProvider } from '@/components/theme/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
@@ -55,8 +55,9 @@ export default function RootLayout({
           {children}
           <Toaster />
         </ThemeProvider>
-        <SpeedInsights />
-        <Analytics />
+        <Suspense fallback={null}>
+          <SiteTelemetry />
+        </Suspense>
       </body>
     </html>
   )

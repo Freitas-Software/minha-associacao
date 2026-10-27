@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 export function LandingHero() {
   return (
     <section className="bg-linear-to-br from-accent/25 via-background to-accent/30">
-      <div className="mx-auto grid max-w-[1376px] items-center gap-12 px-5 py-14 sm:px-8 lg:min-h-[620px] lg:grid-cols-2 lg:gap-6 lg:py-16">
+      {/* At lg the header is 78px tall, so the hero fills the rest of the screen. */}
+      <div className="mx-auto grid min-h-svh max-w-[1376px] content-center items-center gap-12 px-5 py-14 sm:px-8 lg:min-h-[calc(100svh-4.875rem)] lg:grid-cols-2 lg:gap-6 lg:py-16">
         <div>
           <p className="mb-5 inline-flex rounded-full bg-accent/70 px-4 py-2 text-xs font-medium text-primary sm:text-sm">
             Feito para associações e OSCs
@@ -60,6 +61,9 @@ export function LandingHero() {
             ))}
           </ul>
         </div>
+        {/* The artwork was drawn on a light backdrop: in dark mode the
+            inversion turns it into a night scene, and the blend mode hides
+            the backdrop rectangle. */}
         <Image
           src="/images/landing/product-devices.png"
           alt="Ilustração de uma plataforma de gestão no computador e no celular"
@@ -67,7 +71,7 @@ export function LandingHero() {
           height={1086}
           sizes="(min-width: 1376px) 644px, (min-width: 1024px) 50vw, 100vw"
           preload
-          className="h-auto w-full rounded-3xl"
+          className="h-auto w-full rounded-3xl dark:mix-blend-lighten dark:[filter:invert(1)_hue-rotate(180deg)]"
         />
       </div>
     </section>

@@ -51,9 +51,9 @@ export function LandingFeatures() {
   return (
     <section
       id="recursos"
-      className="scroll-mt-8 bg-linear-to-b from-accent/20 to-background"
+      className="bg-linear-to-b from-accent/20 to-background"
     >
-      <div className="mx-auto max-w-[1376px] px-5 py-14 sm:px-8">
+      <div className="mx-auto flex min-h-svh max-w-[1376px] flex-col justify-center px-5 py-14 sm:px-8">
         <div className="mb-7 text-center">
           <p className="mb-3 text-xs font-medium tracking-wider text-primary sm:text-sm">
             TUDO O QUE SUA ASSOCIAÇÃO PRECISA
