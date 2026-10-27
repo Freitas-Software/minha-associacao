@@ -1,26 +1,147 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useForm } from '@tanstack/react-form'
+import { useState } from 'react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import type { ActionResult } from '@/lib/actions'
-import type { RequestRegistrationFields } from '../../schema'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  type RequestRegistrationInput,
+  requestRegistrationSchema,
+} from '@/modules/identity/registration.schema'
 import { requestRegistration } from '../actions'
 
-type RegistrationState = ActionResult<RequestRegistrationFields> | null
+type Feedback =
+  | { variant: 'default'; message: string }
+  | { variant: 'destructive'; message: string }
 
-const initialValues = {
+const initialValues: RequestRegistrationInput = {
   name: '',
   documentNumber: '',
   email: '',
   phone: '',
   birthDate: '',
+}
+
+export function RegistrationForm() {
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
+
+  const form = useForm({
+    defaultValues: initialValues,
+    validators: {
+      onSubmit: requestRegistrationSchema,
+    },
+    onSubmit: async ({ value }) => {
+      setFeedback(null)
+
+      try {
+        const result = await requestRegistration(value)
+
+        if (!result.success) {
+          setFeedback({ variant: 'destructive', message: result.message })
+          return
+        }
+
+        setFeedback({
+          variant: 'default',
+          message:
+            'Se o cadastro puder prosseguir, você receberá um email com as instruções. Confira também uma solicitação anterior e a pasta de spam. Aguarde pelo menos 60 segundos antes de solicitar outro link.',
+        })
+      } catch {
+        setFeedback({
+          variant: 'destructive',
+          message:
+            'Não foi possível confirmar a solicitação. Aguarde 60 segundos antes de tentar novamente.',
+        })
+      }
+    },
+  })
+
+  return (
+    <form.Subscribe selector={state => state.isSubmitting}>
+      {isSubmitting => (
+        <form
+          noValidate
+          aria-busy={isSubmitting}
+          onSubmit={event => {
+            event.preventDefault()
+            event.stopPropagation()
+            form.handleSubmit()
+          }}
+        >
+          <FieldSet>
+            <FieldLegend className="sr-only">
+              Dados para solicitar seu cadastro
+            </FieldLegend>
+
+            <FieldGroup>
+              {fields.map(field => (
+                <form.Field key={field.name} name={field.name}>
+                  {fieldApi => {
+                    const errors = fieldApi.state.meta.errors
+                    const invalid = errors.length > 0
+                    const inputId = `registration-${field.name}`
+                    const errorId = `${inputId}-error`
+
+                    return (
+                      <Field data-invalid={invalid}>
+                        <FieldLabel htmlFor={inputId}>{field.label}</FieldLabel>
+
+                        <Input
+                          id={inputId}
+                          name={fieldApi.name}
+                          type={field.type}
+                          autoComplete={field.autoComplete}
+                          placeholder={field.placeholder}
+                          maxLength={field.maxLength}
+                          required
+                          value={fieldApi.state.value}
+                          onBlur={fieldApi.handleBlur}
+                          onChange={event => {
+                            fieldApi.handleChange(event.currentTarget.value)
+                          }}
+                          aria-invalid={invalid}
+                          aria-describedby={invalid ? errorId : undefined}
+                        />
+
+                        <FieldError id={errorId} errors={errors} />
+                      </Field>
+                    )
+                  }}
+                </form.Field>
+              ))}
+            </FieldGroup>
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Spinner data-icon="inline-start" />
+                  Solicitando cadastro…
+                </>
+              ) : (
+                'Receber link de cadastro'
+              )}
+            </Button>
+
+            {feedback ? (
+              <Alert variant={feedback.variant}>
+                <AlertDescription>{feedback.message}</AlertDescription>
+              </Alert>
+            ) : null}
+          </FieldSet>
+        </form>
+      )}
+    </form.Subscribe>
+  )
 }
 
 const fields = [
@@ -65,97 +186,3 @@ const fields = [
     maxLength: undefined,
   },
 ] as const
-
-export function RegistrationForm() {
-  const [values, setValues] = useState(initialValues)
-
-  const [state, formAction, isPending] = useActionState<
-    RegistrationState,
-    FormData
-  >(async (_previousState, formData) => {
-    try {
-      return await requestRegistration({
-        name: formData.get('name'),
-        documentNumber: formData.get('documentNumber'),
-        email: formData.get('email'),
-        phone: formData.get('phone'),
-        birthDate: formData.get('birthDate'),
-      })
-    } catch {
-      return {
-        success: false,
-        message:
-          'Não foi possível confirmar a solicitação. Aguarde 60 segundos antes de tentar novamente.',
-      }
-    }
-  }, null)
-
-  const fieldErrors = state?.success === false ? state.fieldErrors : undefined
-
-  return (
-    <form action={formAction} aria-busy={isPending}>
-      <fieldset disabled={isPending} className="space-y-6">
-        <legend className="sr-only">Dados para solicitar seu cadastro</legend>
-
-        <FieldGroup>
-          {fields.map(field => {
-            const errors = fieldErrors?.[field.name]
-            const inputId = `registration-${field.name}`
-            const errorId = `${inputId}-error`
-
-            return (
-              <Field key={field.name} data-invalid={Boolean(errors?.length)}>
-                <FieldLabel htmlFor={inputId}>{field.label}</FieldLabel>
-                <Input
-                  id={inputId}
-                  name={field.name}
-                  type={field.type}
-                  autoComplete={field.autoComplete}
-                  placeholder={field.placeholder}
-                  maxLength={field.maxLength}
-                  required
-                  value={values[field.name]}
-                  aria-invalid={Boolean(errors?.length)}
-                  aria-describedby={errors?.length ? errorId : undefined}
-                  onChange={event => {
-                    const value = event.currentTarget.value
-
-                    setValues(previous => ({
-                      ...previous,
-                      [field.name]: value,
-                    }))
-                  }}
-                />
-
-                {errors?.length ? (
-                  <FieldError
-                    id={errorId}
-                    errors={errors.map(message => ({ message }))}
-                  />
-                ) : null}
-              </Field>
-            )
-          })}
-        </FieldGroup>
-
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? 'Solicitando cadastro' : 'Receber link de cadastro'}
-        </Button>
-      </fieldset>
-
-      <div aria-live="polite" aria-atomic="true" className="mt-4">
-        {state?.success === true ? (
-          <p className="text-sm text-muted-foreground">
-            Se o cadastro puder prosseguir, você receberá um email com as
-            instruções. Confira também uma solicitação anterior e a pasta de
-            spam. Aguarde pelo menos 60 segundos antes de solicitar outro link.
-          </p>
-        ) : null}
-
-        {state?.success === false ? (
-          <p className="text-sm text-destructive">{state.message} </p>
-        ) : null}
-      </div>
-    </form>
-  )
-}
