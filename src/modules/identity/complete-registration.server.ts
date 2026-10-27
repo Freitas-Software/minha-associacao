@@ -103,6 +103,8 @@ export async function completeRegistration(
       return false
     }
 
+    const now = new Date()
+
     const [account] = await tx
       .insert(accounts)
       .values({
@@ -120,7 +122,8 @@ export async function completeRegistration(
         .update(users)
         .set({
           accountId: account.id,
-          updatedAt: new Date(),
+          emailVerifiedAt: now,
+          updatedAt: now,
         })
         .where(
           and(
@@ -140,12 +143,11 @@ export async function completeRegistration(
         name: request.name,
         documentNumber: request.documentNumber,
         email: request.email,
+        emailVerifiedAt: now,
         phone: request.phone,
         birthDate: request.birthDate,
       })
     }
-
-    const now = new Date()
 
     const [consumedRequest] = await tx
       .update(registrationRequests)
