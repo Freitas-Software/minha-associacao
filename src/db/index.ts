@@ -1,3 +1,4 @@
+import 'server-only'
 import 'dotenv/config'
 import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
