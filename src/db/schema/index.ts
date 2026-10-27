@@ -1,3 +1,6 @@
 export * from './accounts'
+export * from './login-rate-limits'
+export * from './password-reset-requests'
 export * from './registration-requests'
+export * from './sessions'
 export * from './users'
