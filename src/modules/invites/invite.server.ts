@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   inviteRedemptions,
@@ -86,6 +86,7 @@ export async function createInvite(
     const [found] = await database
       .select({
         id: roles.id,
+        name: roles.name,
         isDirector: roles.isDirector,
         hasFullAccess: roles.hasFullAccess,
       })
@@ -166,8 +167,13 @@ export type ValidInvite = {
   maxUses: number | null
   usesCount: number
   expiresAt: Date
+  organization: {
+    legalName: string
+    acronym: string
+  }
   role: {
     id: string
+    name: string
     isDirector: boolean
     hasFullAccess: boolean
   } | null
@@ -190,6 +196,8 @@ export async function validateInviteToken(
       maxUses: invites.maxUses,
       usesCount: invites.usesCount,
       expiresAt: invites.expiresAt,
+      organizationName: organizations.legalName,
+      organizationAcronym: organizations.acronym,
     })
     .from(invites)
     .innerJoin(organizations, eq(organizations.id, invites.organizationId))
@@ -211,6 +219,7 @@ export async function validateInviteToken(
     const [found] = await database
       .select({
         id: roles.id,
+        name: roles.name,
         isDirector: roles.isDirector,
         hasFullAccess: roles.hasFullAccess,
       })
@@ -231,9 +240,15 @@ export async function validateInviteToken(
   if (invite.type === 'shared' && role?.hasFullAccess) return null
   if (invite.type === 'shared' && role?.isDirector) return null
 
+  const { organizationName, organizationAcronym, ...inviteData } = invite
+
   return {
-    ...invite,
+    ...inviteData,
     type: invite.type as InviteType,
+    organization: {
+      legalName: organizationName,
+      acronym: organizationAcronym,
+    },
     role,
   }
 }
@@ -496,4 +511,111 @@ export async function revokeInvite(
   })
 
   return { status: 'revoked' }
+}
+
+export type InviteManagementData =
+  | {
+      status: 'ok'
+      organization: {
+        id: string
+        legalName: string
+        acronym: string
+        status: 'provisioning' | 'active'
+      }
+      roles: Array<{
+        id: string
+        name: string
+        isDirector: boolean
+        hasFullAccess: boolean
+        isDefault: boolean
+      }>
+      invites: Array<{
+        id: string
+        type: InviteType
+        roleName: string | null
+        documentNumber: string | null
+        maxUses: number | null
+        usesCount: number
+        expiresAt: Date
+        revokedAt: Date | null
+        createdAt: Date
+      }>
+    }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+
+export async function getInviteManagementData(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<InviteManagementData> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.invitesManage)) {
+    return { status: 'forbidden' }
+  }
+
+  const [organization] = await database
+    .select({
+      id: organizations.id,
+      legalName: organizations.legalName,
+      acronym: organizations.acronym,
+      status: organizations.status,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1)
+
+  if (!organization) return { status: 'not-found' }
+
+  const roleRows = await database
+    .select({
+      id: roles.id,
+      name: roles.name,
+      isDirector: roles.isDirector,
+      hasFullAccess: roles.hasFullAccess,
+      isDefault: roles.isDefault,
+    })
+    .from(roles)
+    .where(
+      and(eq(roles.organizationId, organizationId), eq(roles.isActive, true)),
+    )
+    .orderBy(roles.name)
+
+  const inviteRows = await database
+    .select({
+      id: invites.id,
+      type: invites.type,
+      roleName: roles.name,
+      documentNumber: invites.documentNumber,
+      maxUses: invites.maxUses,
+      usesCount: invites.usesCount,
+      expiresAt: invites.expiresAt,
+      revokedAt: invites.revokedAt,
+      createdAt: invites.createdAt,
+    })
+    .from(invites)
+    .leftJoin(
+      roles,
+      and(
+        eq(roles.id, invites.roleId),
+        eq(roles.organizationId, invites.organizationId),
+      ),
+    )
+    .where(eq(invites.organizationId, organizationId))
+    .orderBy(desc(invites.createdAt))
+
+  return {
+    status: 'ok',
+    organization,
+    roles: roleRows,
+    invites: inviteRows.map(invite => ({
+      ...invite,
+      type: invite.type as InviteType,
+    })),
+  }
 }
