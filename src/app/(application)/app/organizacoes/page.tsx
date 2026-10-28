@@ -3,6 +3,7 @@ import { io } from 'next/cache'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { requireSession } from '@/lib/session'
+import { isPlatformAdmin } from '@/modules/authorization/authorize.server'
 import { listUserOrganizations } from '@/modules/organizations/organization.server'
 
 export const metadata: Metadata = {
@@ -13,17 +14,42 @@ async function OrganizationsContent() {
   await io()
 
   const session = await requireSession()
-  const organizations = await listUserOrganizations(session.userId)
+  const [organizations, isAdmin] = await Promise.all([
+    listUserOrganizations(session.userId),
+    isPlatformAdmin(session.userId),
+  ])
 
   return (
     <main className="space-y-8">
-      <header className="space-y-2">
+      <header className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight">
           Minhas organizações
         </h1>
         <p className="text-sm text-muted-foreground">
           Organizações em que você possui um vínculo ativo.
         </p>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link
+            href="/app/organizacoes/nova"
+            className="underline underline-offset-4"
+          >
+            Solicitar nova organização
+          </Link>
+          <Link
+            href="/app/organizacoes/solicitacoes"
+            className="underline underline-offset-4"
+          >
+            Minhas solicitações
+          </Link>
+          {isAdmin ? (
+            <Link
+              href="/app/admin/solicitacoes"
+              className="underline underline-offset-4"
+            >
+              Solicitações pendentes
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       {organizations.length === 0 ? (

@@ -20,6 +20,13 @@ import {
   createRole,
 } from '@/modules/organizations/organization.server'
 import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
+import {
+  approveOrganizationRequest,
+  ORGANIZATION_REQUEST_DOCUMENT_TYPES,
+  ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
+  rejectOrganizationRequest,
+  requestOrganization,
+} from '@/modules/organizations/organization-request.server'
 
 function readText(formData: FormData, key: string): string {
   const value = formData.get(key)
@@ -385,6 +392,210 @@ export async function activateOrganizationAction(
     return {
       status: 'error',
       message: 'Não foi possível ativar a organização agora.',
+    }
+  }
+}
+
+export async function requestOrganizationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const cnpj = readText(formData, 'cnpj')
+  const acronym = readText(formData, 'acronym')
+  const document = formData.get('document')
+
+  if (!(document instanceof File) || document.size === 0) {
+    return {
+      status: 'error',
+      message: 'Anexe a ata de eleição em PDF, JPEG ou PNG.',
+    }
+  }
+
+  if (document.size > ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES) {
+    return {
+      status: 'error',
+      message: 'A ata deve ter no máximo 3 MB.',
+    }
+  }
+
+  if (
+    !ORGANIZATION_REQUEST_DOCUMENT_TYPES.includes(
+      document.type as (typeof ORGANIZATION_REQUEST_DOCUMENT_TYPES)[number],
+    )
+  ) {
+    return {
+      status: 'error',
+      message: 'A ata deve ser um arquivo PDF, JPEG ou PNG.',
+    }
+  }
+
+  try {
+    const result = await requestOrganization({
+      actorUserId: session.userId,
+      cnpj,
+      acronym,
+      documentName: document.name,
+      documentType: document.type,
+      documentSize: document.size,
+      documentData: Buffer.from(await document.arrayBuffer()),
+    })
+
+    if (result.status === 'created') {
+      revalidatePath('/app/organizacoes')
+      revalidatePath('/app/organizacoes/solicitacoes')
+      revalidatePath('/app/admin/solicitacoes')
+
+      return {
+        status: 'success',
+        message:
+          'Solicitação enviada. O administrador da plataforma vai analisar a ata de eleição.',
+      }
+    }
+
+    switch (result.status) {
+      case 'invalid-cnpj':
+        return { status: 'error', message: 'Informe um CNPJ válido.' }
+      case 'invalid-document':
+        return {
+          status: 'error',
+          message: 'A ata deve ser PDF, JPEG ou PNG com até 3 MB.',
+        }
+      case 'duplicate-organization':
+        return {
+          status: 'error',
+          message: 'Já existe uma organização com este CNPJ.',
+        }
+      case 'pending-request':
+        return {
+          status: 'error',
+          message: 'Já existe uma solicitação pendente para este CNPJ.',
+        }
+      case 'lookup-failed':
+        return { status: 'error', message: result.message }
+    }
+  } catch {
+    console.error('[requestOrganizationAction]', { stage: 'request' })
+    return {
+      status: 'error',
+      message: 'Não foi possível enviar a solicitação agora.',
+    }
+  }
+}
+
+export async function approveOrganizationRequestAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const requestId = readText(formData, 'requestId')
+
+  if (!z.uuid().safeParse(requestId).success) {
+    return { status: 'error', message: 'Solicitação inválida.' }
+  }
+
+  try {
+    const result = await approveOrganizationRequest(session.userId, requestId)
+
+    if (result.status === 'approved') {
+      revalidatePath('/app/admin/solicitacoes')
+      revalidatePath('/app/organizacoes')
+      revalidatePath('/app/organizacoes/solicitacoes')
+      return {
+        status: 'success',
+        message: 'Solicitação aprovada e organização criada.',
+      }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para aprovar solicitações.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Solicitação não encontrada.' }
+      case 'already-reviewed':
+        return {
+          status: 'error',
+          message: 'Esta solicitação já foi analisada.',
+        }
+      case 'duplicate-organization':
+        return {
+          status: 'error',
+          message: 'Já existe uma organização com este CNPJ.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível aprovar a solicitação agora.',
+    }
+  } catch {
+    console.error('[approveOrganizationRequestAction]', { stage: 'approve' })
+    return {
+      status: 'error',
+      message: 'Não foi possível aprovar a solicitação agora.',
+    }
+  }
+}
+
+export async function rejectOrganizationRequestAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const requestId = readText(formData, 'requestId')
+  const reason = readText(formData, 'reason')
+
+  if (!z.uuid().safeParse(requestId).success) {
+    return { status: 'error', message: 'Solicitação inválida.' }
+  }
+
+  if (reason.length < 3) {
+    return {
+      status: 'error',
+      message: 'Informe o motivo da rejeição.',
+    }
+  }
+
+  try {
+    const result = await rejectOrganizationRequest(
+      session.userId,
+      requestId,
+      reason,
+    )
+
+    if (result.status === 'rejected') {
+      revalidatePath('/app/admin/solicitacoes')
+      revalidatePath('/app/organizacoes/solicitacoes')
+      return { status: 'success', message: 'Solicitação rejeitada.' }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para rejeitar solicitações.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Solicitação não encontrada.' }
+      case 'already-reviewed':
+        return {
+          status: 'error',
+          message: 'Esta solicitação já foi analisada.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível rejeitar a solicitação agora.',
+    }
+  } catch {
+    console.error('[rejectOrganizationRequestAction]', { stage: 'reject' })
+    return {
+      status: 'error',
+      message: 'Não foi possível rejeitar a solicitação agora.',
     }
   }
 }
