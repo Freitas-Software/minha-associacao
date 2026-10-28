@@ -494,3 +494,34 @@ export async function listRoles(
     })),
   }
 }
+
+export async function listUserOrganizations(
+  userId: string,
+  database: typeof db = db,
+) {
+  return database
+    .select({
+      id: organizations.id,
+      legalName: organizations.legalName,
+      acronym: organizations.acronym,
+      status: organizations.status,
+      roleName: roles.name,
+    })
+    .from(memberships)
+    .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+    .innerJoin(
+      roles,
+      and(
+        eq(roles.id, memberships.roleId),
+        eq(roles.organizationId, memberships.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(memberships.userId, userId),
+        eq(memberships.status, 'active'),
+        eq(roles.isActive, true),
+      ),
+    )
+    .orderBy(organizations.legalName)
+}
