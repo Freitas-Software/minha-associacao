@@ -3,6 +3,7 @@ import { io } from 'next/cache'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { Button } from '@/components/ui/button'
 import { requireSession } from '@/lib/session'
 import { listAuditEvents } from '@/modules/audit/audit.server'
 import { getOrganizationSummary } from '@/modules/organizations/organization.server'
@@ -14,6 +15,39 @@ export const metadata: Metadata = {
 
 type AuditPageProps = {
   params: Promise<{ organizationId: string }>
+  searchParams: Promise<{
+    action?: string | string[]
+    page?: string | string[]
+  }>
+}
+
+const pageSize = 30
+
+function resolveAction(
+  value: string | string[] | undefined,
+): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function resolvePage(value: string | string[] | undefined): number {
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function pageHref(
+  organizationId: string,
+  action: string | undefined,
+  page: number,
+): string {
+  const params = new URLSearchParams()
+
+  if (action) params.set('action', action)
+  if (page > 1) params.set('page', String(page))
+
+  const query = params.toString()
+
+  return `/app/organizacoes/${organizationId}/auditoria${query ? `?${query}` : ''}`
 }
 
 const actionLabels: Record<string, string> = {
@@ -38,17 +72,29 @@ function formatDateTime(date: Date): string {
   }).format(date)
 }
 
-async function AuditContent({ params }: AuditPageProps) {
+async function AuditContent({ params, searchParams }: AuditPageProps) {
   await io()
 
   const { organizationId } = await params
+  const query = await searchParams
+  const action = resolveAction(query.action)
+  const page = resolvePage(query.page)
   const session = await requireSession()
   const [summary, auditData] = await Promise.all([
     getOrganizationSummary(session.userId, organizationId),
-    listAuditEvents(session.userId, organizationId),
+    listAuditEvents(session.userId, organizationId, {
+      action,
+      limit: pageSize + 1,
+      offset: (page - 1) * pageSize,
+    }),
   ])
 
   if (summary.status !== 'ok' || auditData.status !== 'ok') notFound()
+
+  const hasNext = auditData.events.length > pageSize
+  const events = hasNext
+    ? auditData.events.slice(0, pageSize)
+    : auditData.events
 
   return (
     <main className="space-y-8">
@@ -61,17 +107,41 @@ async function AuditContent({ params }: AuditPageProps) {
         </Link>
         <h1 className="text-3xl font-semibold tracking-tight">Auditoria</h1>
         <p className="text-sm text-muted-foreground">
-          Últimos eventos registrados na organização.
+          Eventos registrados na organização.
         </p>
       </header>
 
-      {auditData.events.length === 0 ? (
+      <form method="get" className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <label htmlFor="audit-action" className="block text-sm font-medium">
+            Filtrar por evento
+          </label>
+          <select
+            id="audit-action"
+            name="action"
+            defaultValue={action ?? ''}
+            className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+          >
+            <option value="">Todos os eventos</option>
+            {Object.entries(actionLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button type="submit" variant="outline" size="sm">
+          Filtrar
+        </Button>
+      </form>
+
+      {events.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nenhum evento registrado ainda.
+          Nenhum evento encontrado.
         </p>
       ) : (
         <ul className="space-y-3">
-          {auditData.events.map(event => {
+          {events.map(event => {
             const hasMetadata = Object.keys(event.metadata).length > 0
 
             return (
@@ -110,11 +180,35 @@ async function AuditContent({ params }: AuditPageProps) {
           })}
         </ul>
       )}
+
+      {page > 1 || hasNext ? (
+        <nav
+          aria-label="Paginação da auditoria"
+          className="flex flex-wrap items-center gap-3"
+        >
+          {page > 1 ? (
+            <Link
+              href={pageHref(summary.organization.id, action, page - 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              ← Anterior
+            </Link>
+          ) : null}
+          {hasNext ? (
+            <Link
+              href={pageHref(summary.organization.id, action, page + 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              Próxima →
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
     </main>
   )
 }
 
-export default function AuditPage({ params }: AuditPageProps) {
+export default function AuditPage({ params, searchParams }: AuditPageProps) {
   return (
     <Suspense
       fallback={
@@ -123,7 +217,7 @@ export default function AuditPage({ params }: AuditPageProps) {
         </p>
       }
     >
-      <AuditContent params={params} />
+      <AuditContent params={params} searchParams={searchParams} />
     </Suspense>
   )
 }

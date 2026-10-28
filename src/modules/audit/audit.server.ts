@@ -1,5 +1,5 @@
 import 'server-only'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { auditEvents, users } from '@/db/schema'
 import {
@@ -47,10 +47,16 @@ export async function recordAuditEvent(
   })
 }
 
+export type ListAuditEventsOptions = {
+  limit?: number
+  offset?: number
+  action?: string
+}
+
 export async function listAuditEvents(
   actorUserId: string,
   organizationId: string,
-  limit = 50,
+  options: ListAuditEventsOptions = {},
   database: typeof db = db,
 ): Promise<ListAuditEventsResult> {
   const access = await getOrganizationAccess(
@@ -63,7 +69,8 @@ export async function listAuditEvents(
     return { status: 'forbidden' }
   }
 
-  const safeLimit = Math.min(Math.max(limit, 1), 100)
+  const safeLimit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
 
   const events = await database
     .select({
@@ -77,9 +84,15 @@ export async function listAuditEvents(
     })
     .from(auditEvents)
     .leftJoin(users, eq(users.id, auditEvents.actorUserId))
-    .where(eq(auditEvents.organizationId, organizationId))
+    .where(
+      and(
+        eq(auditEvents.organizationId, organizationId),
+        options.action ? eq(auditEvents.action, options.action) : undefined,
+      ),
+    )
     .orderBy(desc(auditEvents.createdAt))
     .limit(safeLimit)
+    .offset(offset)
 
   return { status: 'ok', events }
 }
