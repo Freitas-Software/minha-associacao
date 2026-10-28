@@ -25,6 +25,7 @@ import { lookupCnpj } from './cnpj.server'
 import type {
   CreateRoleData,
   DeactivateMembershipData,
+  UpdateOrganizationData,
   UpdateRoleData,
 } from './organization.schema'
 
@@ -102,6 +103,54 @@ export async function createOrganization(
     if (isDatabaseError(error)) return { status: 'duplicate-cnpj' }
     throw error
   }
+}
+
+export type UpdateOrganizationResult =
+  | { status: 'updated' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+
+export async function updateOrganization(
+  input: {
+    actorUserId: string
+    organizationId: string
+    data: UpdateOrganizationData
+  },
+  database: typeof db = db,
+): Promise<UpdateOrganizationResult> {
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    input.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.organizationUpdate)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [updated] = await tx
+      .update(organizations)
+      .set({
+        acronym: input.data.acronym,
+        updatedAt: new Date(),
+      })
+      .where(eq(organizations.id, input.organizationId))
+      .returning({ id: organizations.id })
+
+    if (!updated) return { status: 'not-found' as const }
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: updated.id,
+      action: 'organization.updated',
+      entityType: 'organization',
+      entityId: updated.id,
+      metadata: { acronym: input.data.acronym },
+    })
+
+    return { status: 'updated' as const }
+  })
 }
 
 export type CreateRoleResult =
@@ -539,6 +588,7 @@ export type OrganizationSummary =
       status: 'ok'
       organization: {
         id: string
+        cnpj: string
         legalName: string
         acronym: string
         status: 'provisioning' | 'active'
@@ -568,6 +618,7 @@ export async function getOrganizationSummary(
   const [organization] = await database
     .select({
       id: organizations.id,
+      cnpj: organizations.cnpj,
       legalName: organizations.legalName,
       acronym: organizations.acronym,
       status: organizations.status,

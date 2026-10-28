@@ -18,12 +18,14 @@ import { inviteAcceptanceUrl } from '@/modules/invites/invite-url'
 import {
   createRoleSchema,
   deactivateMembershipSchema,
+  updateOrganizationSchema,
   updateRoleSchema,
 } from '@/modules/organizations/organization.schema'
 import {
   activateOrganization,
   createRole,
   deactivateMembership,
+  updateOrganization,
   updateRole,
 } from '@/modules/organizations/organization.server'
 import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
@@ -880,6 +882,58 @@ export async function requestPreRegistrationAction(
     return {
       status: 'error',
       message: 'Não foi possível pré-cadastrar a pessoa agora.',
+    }
+  }
+}
+
+export async function updateOrganizationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+
+  if (!z.uuid().safeParse(organizationId).success) {
+    return { status: 'error', message: 'Organização inválida.' }
+  }
+
+  const parsed = updateOrganizationSchema.safeParse({
+    acronym: readText(formData, 'acronym'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Confira a sigla.',
+    }
+  }
+
+  try {
+    const result = await updateOrganization({
+      actorUserId: session.userId,
+      organizationId,
+      data: parsed.data,
+    })
+
+    if (result.status === 'updated') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/configuracoes`)
+      return { status: 'success', message: 'Sigla atualizada.' }
+    }
+
+    if (result.status === 'forbidden') {
+      return {
+        status: 'error',
+        message: 'Você não tem permissão para editar a organização.',
+      }
+    }
+
+    return { status: 'error', message: 'Organização não encontrada.' }
+  } catch {
+    console.error('[updateOrganizationAction]', { stage: 'update' })
+    return {
+      status: 'error',
+      message: 'Não foi possível atualizar a organização agora.',
     }
   }
 }
