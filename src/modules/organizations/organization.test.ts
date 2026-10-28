@@ -16,6 +16,7 @@ import {
   createRole,
   deactivateMembership,
   listAssignableRoles,
+  listPendingPreRegistrations,
   updateMembershipRole,
   updateOrganization,
 } from './organization.server'
@@ -116,6 +117,17 @@ test('organization domain on PostgreSQL, using temporary tables', {
         entity_id varchar(100),
         metadata jsonb DEFAULT '{}' NOT NULL,
         created_at timestamptz DEFAULT now() NOT NULL
+      );
+      CREATE TEMP TABLE registration_requests (
+        id uuid PRIMARY KEY,
+        organization_id uuid,
+        role_id uuid,
+        name varchar(255) NOT NULL,
+        email varchar(55) NOT NULL,
+        created_at timestamptz DEFAULT now() NOT NULL,
+        expires_at timestamptz NOT NULL,
+        consumed_at timestamptz,
+        invalidated_at timestamptz
       )
     `)
 
@@ -232,7 +244,7 @@ test('organization domain on PostgreSQL, using temporary tables', {
       await pool.query(
         `TRUNCATE pg_temp.users, pg_temp.organizations, pg_temp.platform_admins,
           pg_temp.roles, pg_temp.role_permissions, pg_temp.memberships,
-          pg_temp.audit_events`,
+          pg_temp.audit_events, pg_temp.registration_requests`,
       )
     }
 
@@ -775,6 +787,70 @@ test('organization domain on PostgreSQL, using temporary tables', {
         { status: 'forbidden' },
       )
     })
+    await t.test(
+      'lists pending pre-registrations with permission',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const outsiderId = await createUser('outsider')
+        const organizationId = await createOrganizationRow(presidentId)
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+        const associateRoleId = await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+
+        const future = new Date(Date.now() + 60 * 60 * 1000)
+
+        await pool.query(
+          `INSERT INTO pg_temp.registration_requests
+          (id, organization_id, role_id, name, email, expires_at, consumed_at, invalidated_at)
+         VALUES
+          ($1, $2, $3, 'Pendente', 'pendente@example.test', $4, NULL, NULL),
+          ($5, $2, $3, 'Consumida', 'consumida@example.test', $4, now(), NULL),
+          ($6, $2, $3, 'Invalidada', 'invalidada@example.test', $4, NULL, now())`,
+          [
+            randomUUID(),
+            organizationId,
+            associateRoleId,
+            future,
+            randomUUID(),
+            randomUUID(),
+          ],
+        )
+
+        const result = await listPendingPreRegistrations(
+          presidentId,
+          organizationId,
+          database,
+        )
+
+        assert.equal(result.status, 'ok')
+
+        if (result.status !== 'ok') throw new Error('Expected requests')
+
+        assert.equal(result.requests.length, 1)
+        assert.equal(result.requests[0].name, 'Pendente')
+        assert.equal(result.requests[0].email, 'pendente@example.test')
+        assert.equal(result.requests[0].roleName, 'Associado')
+        assert.deepEqual(result.requests[0].expiresAt, future)
+
+        assert.deepEqual(
+          await listPendingPreRegistrations(
+            outsiderId,
+            organizationId,
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+      },
+    )
   } finally {
     await pool.end()
   }
