@@ -14,6 +14,12 @@ import {
   INVITE_SHARED_TTL_MS,
 } from '@/modules/invites/invite-policy'
 import { inviteAcceptanceUrl } from '@/modules/invites/invite-url'
+import { createRoleSchema } from '@/modules/organizations/organization.schema'
+import {
+  activateOrganization,
+  createRole,
+} from '@/modules/organizations/organization.server'
+import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
 
 function readText(formData: FormData, key: string): string {
   const value = formData.get(key)
@@ -226,6 +232,159 @@ export async function acceptInviteAction(
     return {
       status: 'error',
       message: 'Não foi possível aceitar o convite agora.',
+    }
+  }
+}
+
+export async function createRoleAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+
+  if (!z.uuid().safeParse(organizationId).success) {
+    return { status: 'error', message: 'Organização inválida.' }
+  }
+
+  const parsed = createRoleSchema.safeParse({
+    name: readText(formData, 'name'),
+    isDirector: formData.get('isDirector') === 'on',
+    hasFullAccess: formData.get('hasFullAccess') === 'on',
+    isDefault: formData.get('isDefault') === 'on',
+    permissionCodes: formData
+      .getAll('permissionCodes')
+      .filter((value): value is string => typeof value === 'string'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Confira os campos.',
+    }
+  }
+
+  try {
+    const result = await createRole({
+      actorUserId: session.userId,
+      organizationId,
+      role: parsed.data,
+    })
+
+    if (result.status === 'created') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/cargos`)
+      return { status: 'success', message: 'Cargo criado.' }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para criar cargos.',
+        }
+      case 'invalid-default-role':
+        return {
+          status: 'error',
+          message:
+            'O cargo padrão não pode ser de diretoria nem de acesso completo.',
+        }
+      case 'invalid-permission':
+        return {
+          status: 'error',
+          message: 'Uma das permissões selecionadas é inválida.',
+        }
+      case 'default-role-exists':
+        return {
+          status: 'error',
+          message: 'Já existe um cargo padrão ativo nesta organização.',
+        }
+      case 'role-name-exists':
+        return {
+          status: 'error',
+          message: 'Já existe um cargo com este nome.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível criar o cargo agora.',
+    }
+  } catch {
+    console.error('[createRoleAction]', { stage: 'create' })
+    return {
+      status: 'error',
+      message: 'Não foi possível criar o cargo agora.',
+    }
+  }
+}
+
+export async function activateOrganizationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+
+  if (!z.uuid().safeParse(organizationId).success) {
+    return { status: 'error', message: 'Organização inválida.' }
+  }
+
+  try {
+    const result = await activateOrganization(session.userId, organizationId)
+
+    if (result.status === 'activated') {
+      revalidatePath('/app/organizacoes')
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      return {
+        status: 'success',
+        message: 'Organização ativada com sucesso.',
+      }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para ativar a organização.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Organização não encontrada.' }
+      case 'already-active':
+        return { status: 'error', message: 'A organização já está ativa.' }
+      case 'missing-default-role':
+        return {
+          status: 'error',
+          message:
+            'Crie exatamente um cargo padrão de ingresso ativo, sem diretoria e sem acesso completo.',
+        }
+      case 'missing-full-access-role':
+        return {
+          status: 'error',
+          message: 'Crie pelo menos um cargo ativo com acesso completo.',
+        }
+      case 'missing-director-occupant':
+        return {
+          status: 'error',
+          message: 'Todo cargo ativo de diretoria precisa ter um membro ativo.',
+        }
+      case 'missing-full-access-member':
+        return {
+          status: 'error',
+          message:
+            'A organização precisa de pelo menos um membro ativo com cargo de acesso completo.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível ativar a organização agora.',
+    }
+  } catch {
+    console.error('[activateOrganizationAction]', { stage: 'activate' })
+    return {
+      status: 'error',
+      message: 'Não foi possível ativar a organização agora.',
     }
   }
 }
