@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { io } from 'next/cache'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +38,12 @@ async function ProfileContent() {
         <p className="text-sm text-muted-foreground">
           Seus dados de identificação e contato.
         </p>
+        <Link
+          href="/app/perfil/sessoes"
+          className="inline-block text-sm underline underline-offset-4"
+        >
+          Gerenciar sessões ativas
+        </Link>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2">
@@ -65,8 +72,8 @@ async function ProfileContent() {
           </div>
           <p className="mt-1 font-medium">{profile.email}</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            A alteração de email exige um fluxo de confirmação próprio e ainda
-            não está disponível nesta tela.
+            A alteração de email exige a senha atual e confirmação no novo
+            endereço.
           </p>
         </div>
       </section>

@@ -15,6 +15,7 @@ import {
 import { updateProfileSchema } from '@/modules/identity/profile.schema'
 import { updateProfile } from '@/modules/identity/profile.server'
 import type { ProfileActionState } from '@/modules/identity/profile-action-state'
+import { revokeSession } from '@/modules/identity/sessions.server'
 
 export async function updateProfileAction(
   _previousState: ProfileActionState,
@@ -227,6 +228,46 @@ export async function changePasswordAction(
     return {
       status: 'error',
       message: 'Não foi possível alterar a senha agora.',
+    }
+  }
+}
+
+export async function revokeSessionAction(
+  _previousState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const session = await requireSession()
+  const sessionId = formData.get('sessionId')
+
+  if (typeof sessionId !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(sessionId)) {
+    return { status: 'error', message: 'Sessão inválida.' }
+  }
+
+  try {
+    const result = await revokeSession({
+      userId: session.userId,
+      currentSessionId: session.sessionId,
+      sessionId,
+    })
+
+    if (result.status === 'revoked') {
+      revalidatePath('/app/perfil/sessoes')
+      return { status: 'success', message: 'Sessão encerrada.' }
+    }
+
+    if (result.status === 'current-session') {
+      return {
+        status: 'error',
+        message: 'Use “Sair” para encerrar a sessão atual.',
+      }
+    }
+
+    return { status: 'error', message: 'Sessão não encontrada.' }
+  } catch {
+    console.error('[revokeSessionAction]', { stage: 'revoke' })
+    return {
+      status: 'error',
+      message: 'Não foi possível encerrar a sessão agora.',
     }
   }
 }
