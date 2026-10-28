@@ -141,7 +141,7 @@ scripts/               Utilitários operacionais
 - Listagem, alteração de cargo e desativação de membros com motivo e auditoria.
 - Perfil do titular com edição de nome/telefone e alteração de email confirmada no novo endereço.
 - Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
-- Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes e resolução de contato divergente pelo titular.
+- Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes, reenvio de link e resolução de contato divergente pelo titular.
 - Painel de solicitações de organização para administradores da plataforma.
 - Auditoria por organização, com permissão `audit.read` e detalhes dos eventos.
 
