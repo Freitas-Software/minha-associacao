@@ -8,6 +8,7 @@ import * as schema from '@/db/schema'
 import {
   acceptInvite,
   createInvite,
+  getInviteManagementData,
   resendInvite,
   revokeInvite,
   validateInviteToken,
@@ -552,6 +553,134 @@ test('invite domain on PostgreSQL, using temporary tables', {
         assert.equal(audit.rowCount, 1)
       },
     )
+    await t.test('filters and paginates invite management', async () => {
+      const filterRoleId = await createRole(organizationId, {
+        name: 'Filtro',
+      })
+      const targetId = await createUser('filter-target')
+      const documentNumber = await getDocument(targetId)
+
+      const active = await createInvite(
+        {
+          actorUserId: actorId,
+          organizationId,
+          type: 'individual',
+          roleId: filterRoleId,
+          documentNumber,
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+        database,
+      )
+
+      const expired = await createInvite(
+        {
+          actorUserId: actorId,
+          organizationId,
+          type: 'individual',
+          roleId: filterRoleId,
+          documentNumber,
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+        database,
+      )
+
+      const exhausted = await createInvite(
+        {
+          actorUserId: actorId,
+          organizationId,
+          type: 'individual',
+          roleId: filterRoleId,
+          documentNumber,
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+        database,
+      )
+
+      const revoked = await createInvite(
+        {
+          actorUserId: actorId,
+          organizationId,
+          type: 'individual',
+          roleId: filterRoleId,
+          documentNumber,
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+        database,
+      )
+
+      if (
+        active.status !== 'created' ||
+        expired.status !== 'created' ||
+        exhausted.status !== 'created' ||
+        revoked.status !== 'created'
+      ) {
+        throw new Error('Expected invites')
+      }
+
+      await pool.query(
+        "UPDATE pg_temp.invites SET expires_at = now() - interval '1 day' WHERE id = $1",
+        [expired.inviteId],
+      )
+      await pool.query(
+        'UPDATE pg_temp.invites SET uses_count = 1 WHERE id = $1',
+        [exhausted.inviteId],
+      )
+      await revokeInvite(actorId, revoked.inviteId, database)
+
+      const all = await getInviteManagementData(
+        actorId,
+        organizationId,
+        { query: 'Filtro' },
+        database,
+      )
+
+      assert.equal(all.status, 'ok')
+
+      if (all.status !== 'ok') throw new Error('Expected invites')
+
+      assert.equal(all.invites.length, 4)
+
+      for (const [status, expectedId] of [
+        ['active', active.inviteId],
+        ['expired', expired.inviteId],
+        ['exhausted', exhausted.inviteId],
+        ['revoked', revoked.inviteId],
+      ] as const) {
+        const filtered = await getInviteManagementData(
+          actorId,
+          organizationId,
+          { query: 'Filtro', status },
+          database,
+        )
+
+        assert.equal(filtered.status, 'ok')
+
+        if (filtered.status !== 'ok') throw new Error('Expected invites')
+
+        assert.equal(filtered.invites.length, 1)
+        assert.equal(filtered.invites[0].id, expectedId)
+      }
+
+      const page = await getInviteManagementData(
+        actorId,
+        organizationId,
+        { query: 'Filtro', limit: 2 },
+        database,
+      )
+
+      assert.equal(page.status, 'ok')
+
+      if (page.status !== 'ok') throw new Error('Expected invites')
+
+      assert.equal(page.invites.length, 2)
+
+      const outsiderId = await createUser('filter-outsider')
+
+      assert.deepEqual(
+        await getInviteManagementData(outsiderId, organizationId, {}, database),
+        { status: 'forbidden' },
+      )
+    })
   } finally {
     await pool.end()
   }
