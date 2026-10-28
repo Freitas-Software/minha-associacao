@@ -5,6 +5,7 @@ import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import * as schema from '@/db/schema'
+import { listAuditEvents } from '@/modules/audit/audit.server'
 import {
   PERMISSION_CATALOG,
   PERMISSIONS,
@@ -581,6 +582,70 @@ test('organization domain on PostgreSQL, using temporary tables', {
             },
             database,
           ),
+          { status: 'forbidden' },
+        )
+      },
+    )
+    await t.test(
+      'lists audit events with permission and newest first',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const outsiderId = await createUser('outsider')
+        const organizationId = await createOrganizationRow(presidentId)
+        const fullAccessRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, fullAccessRoleId)
+
+        const older = new Date(Date.now() - 60_000)
+        const newer = new Date()
+
+        await pool.query(
+          `INSERT INTO pg_temp.audit_events
+          (id, actor_user_id, organization_id, action, entity_type, entity_id, metadata, created_at)
+         VALUES
+          ($1, $2, $3, 'organization.created', 'organization', $4, '{}', $5),
+          ($6, $2, $3, 'role.created', 'role', $7, $8, $9)`,
+          [
+            randomUUID(),
+            presidentId,
+            organizationId,
+            organizationId,
+            older,
+            randomUUID(),
+            fullAccessRoleId,
+            JSON.stringify({ name: 'Presidente', hasFullAccess: true }),
+            newer,
+          ],
+        )
+
+        const result = await listAuditEvents(
+          presidentId,
+          organizationId,
+          10,
+          database,
+        )
+
+        assert.equal(result.status, 'ok')
+
+        if (result.status !== 'ok') throw new Error('Expected audit events')
+
+        assert.deepEqual(
+          result.events.map(event => event.action),
+          ['role.created', 'organization.created'],
+        )
+        assert.equal(result.events[0].actorName, 'president')
+        assert.deepEqual(result.events[0].metadata, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+
+        assert.deepEqual(
+          await listAuditEvents(outsiderId, organizationId, 10, database),
           { status: 'forbidden' },
         )
       },
