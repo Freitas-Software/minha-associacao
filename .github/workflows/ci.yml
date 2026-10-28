@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/minha_associacao
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/associae
     steps:
       - uses: actions/checkout@v4
 

@@ -14,7 +14,7 @@ const suggestions = [
   {
     title: 'Início',
     description:
-      'Conheça o Minha Associação e o que ele pode fazer pela sua organização.',
+      'Conheça a Associae e o que ela pode fazer pela sua organização.',
     href: '/',
     icon: House,
   },

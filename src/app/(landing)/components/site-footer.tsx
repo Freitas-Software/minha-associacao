@@ -39,7 +39,7 @@ export function SiteFooter({ legalLinks = [] }: SiteFooterProps) {
             href="/"
             className="rounded-sm font-semibold text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
           >
-            Minha Associação
+            Associae
           </Link>
           <p className="text-muted-foreground">
             Mais organização para uma comunidade mais forte.
@@ -91,8 +91,7 @@ export function SiteFooter({ legalLinks = [] }: SiteFooterProps) {
             <Separator className="bg-border/70" />
             <div className="flex flex-col gap-3 pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <p>
-                © <CopyrightYear /> Minha Associação. Todos os direitos
-                reservados.
+                © <CopyrightYear /> Associae. Todos os direitos reservados.
               </p>
               <span lang="pt-BR">Português (Brasil)</span>
             </div>

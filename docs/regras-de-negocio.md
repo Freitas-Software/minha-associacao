@@ -1,4 +1,4 @@
-# Regras de negócio — Minha Associação
+# Regras de negócio — Associae
 
 Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
 

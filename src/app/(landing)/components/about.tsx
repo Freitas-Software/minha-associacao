@@ -14,9 +14,9 @@ export function LandingAbout() {
           </h2>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Sabemos que por trás de cada associação existe um grupo de pessoas
-            comprometidas com um propósito. O Minha Associação existe para
-            facilitar a gestão e dar mais tempo para o que realmente importa:
-            transformar a realidade da sua comunidade.
+            comprometidas com um propósito. A Associae existe para facilitar a
+            gestão e dar mais tempo para o que realmente importa: transformar a
+            realidade da sua comunidade.
           </p>
         </div>
         <Image

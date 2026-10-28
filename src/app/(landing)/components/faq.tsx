@@ -1,13 +1,13 @@
 const questions = [
   {
-    title: 'Para quem é o Minha Associação?',
+    title: 'Para quem é a Associae?',
     answer:
       'A proposta da plataforma é apoiar a organização e a gestão de associações e organizações da sociedade civil (OSCs).',
   },
   {
     title: 'A plataforma já está pronta?',
     answer:
-      'O Minha Associação está em desenvolvimento. A área da aplicação está sendo preparada e os recursos serão disponibilizados conforme forem implementados.',
+      'A Associae está em desenvolvimento. A área da aplicação está sendo preparada e os recursos serão disponibilizados conforme forem implementados.',
   },
   {
     title: 'Já existem planos e preços definidos?',

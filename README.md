@@ -1,4 +1,4 @@
-# Minha Associação
+# Associae
 
 Aplicação web fullstack para gestão de associações e organizações, desenvolvida com Next.js.
 
@@ -8,7 +8,7 @@ Aplicação web fullstack para gestão de associações e organizações, desenv
 
 ## 1. Visão geral
 
-O Minha Associação é uma plataforma destinada à centralização de processos administrativos e operacionais de associações.
+A Associae é uma plataforma destinada à centralização de processos administrativos e operacionais de associações.
 
 A aplicação web é desenvolvida com Next.js e também disponibilizada como Progressive Web App (PWA) instalável em desktops, com funcionamento dependente de conexão à internet.
 
@@ -301,7 +301,7 @@ O fluxo de CI/CD, as regras de promoção entre ambientes e as estratégias de r
 
 ## 11. Organização e acesso
 
-Este repositório pertence à organização responsável pelo desenvolvimento do Minha Associação e possui acesso restrito.
+Este repositório pertence à organização responsável pelo desenvolvimento da Associae e possui acesso restrito.
 
 ### Política de colaboração
 
@@ -333,6 +333,6 @@ Decisões arquiteturais de impacto significativo deverão ser discutidas e regis
 
 ---
 
-**Minha Associação — Documentação interna de desenvolvimento.**
+**Associae — Documentação interna de desenvolvimento.**
 
 Este documento deve ser atualizado sempre que mudanças na configuração, arquitetura ou processo de desenvolvimento afetarem o onboarding e o trabalho da equipe.

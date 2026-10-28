@@ -139,9 +139,9 @@ export async function requestRegistration(
     try {
       await sendEmail({
         to: pendingEmail.to,
-        subject: 'Conclua seu cadastro - Minha Associação',
+        subject: 'Conclua seu cadastro - Associae',
         text: [
-          'Recebemos uma solicitação de cadastro no Minha Associação.',
+          'Recebemos uma solicitação de cadastro na Associae.',
           '',
           'Para confirmar seu email e definir sua senha, acesse:',
           confirmationUrl.toString(),
