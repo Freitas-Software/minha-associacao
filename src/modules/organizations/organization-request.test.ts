@@ -8,6 +8,7 @@ import * as schema from '@/db/schema'
 import {
   approveOrganizationRequest,
   getOrganizationRequestDocument,
+  listOrganizationRequests,
   listPendingOrganizationRequests,
   listUserOrganizationRequests,
   rejectOrganizationRequest,
@@ -383,6 +384,53 @@ test('organization requests on PostgreSQL, using temporary tables', {
         status: 'rejected',
         rejection_reason: 'Ata ilegível',
       })
+    })
+    await t.test('lists request history by status', async () => {
+      const approved = await listOrganizationRequests(
+        adminId,
+        'approved',
+        database,
+      )
+
+      assert.equal(approved.status, 'ok')
+
+      if (approved.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(approved.requests.length, 1)
+      assert.equal(approved.requests[0].status, 'approved')
+      assert.notEqual(approved.requests[0].reviewedAt, null)
+      assert.notEqual(approved.requests[0].organizationId, null)
+
+      const rejected = await listOrganizationRequests(
+        adminId,
+        'rejected',
+        database,
+      )
+
+      assert.equal(rejected.status, 'ok')
+
+      if (rejected.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(rejected.requests.length, 1)
+      assert.equal(rejected.requests[0].status, 'rejected')
+      assert.equal(rejected.requests[0].rejectionReason, 'Ata ilegível')
+
+      const pending = await listOrganizationRequests(
+        adminId,
+        'pending',
+        database,
+      )
+
+      assert.equal(pending.status, 'ok')
+
+      if (pending.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(pending.requests.length, 0)
+
+      assert.deepEqual(
+        await listOrganizationRequests(requesterId, 'approved', database),
+        { status: 'forbidden' },
+      )
     })
   } finally {
     fetchMock.mock.restore()
