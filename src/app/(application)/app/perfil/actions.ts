@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/session'
+import { changePasswordSchema } from '@/modules/identity/change-password.schema'
+import { changePassword } from '@/modules/identity/change-password.server'
 import {
   confirmEmailChangeSchema,
   requestEmailChangeSchema,
@@ -167,6 +169,64 @@ export async function confirmEmailChangeAction(
     return {
       status: 'error',
       message: 'Não foi possível confirmar a alteração de email agora.',
+    }
+  }
+}
+
+export async function changePasswordAction(
+  _previousState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const session = await requireSession()
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get('currentPassword'),
+    newPassword: formData.get('newPassword'),
+    passwordConfirmation: formData.get('passwordConfirmation'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Confira os campos.',
+    }
+  }
+
+  try {
+    const result = await changePassword({
+      userId: session.userId,
+      currentSessionId: session.sessionId,
+      currentPassword: parsed.data.currentPassword,
+      newPassword: parsed.data.newPassword,
+    })
+
+    switch (result.status) {
+      case 'changed':
+        revalidatePath('/app/perfil')
+        return {
+          status: 'success',
+          message:
+            'Senha alterada. As outras sessões da sua conta foram encerradas.',
+        }
+      case 'invalid-password':
+        return { status: 'error', message: 'A senha atual está incorreta.' }
+      case 'same-password':
+        return {
+          status: 'error',
+          message: 'A nova senha deve ser diferente da senha atual.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Conta não encontrada.' }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível alterar a senha agora.',
+    }
+  } catch {
+    console.error('[changePasswordAction]', { stage: 'change' })
+    return {
+      status: 'error',
+      message: 'Não foi possível alterar a senha agora.',
     }
   }
 }

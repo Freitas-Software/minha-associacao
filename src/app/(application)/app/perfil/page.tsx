@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCpf } from '@/lib/formatters'
 import { requireSession } from '@/lib/session'
 import { getProfile } from '@/modules/identity/profile.server'
+import { ChangePasswordForm } from './components/change-password-form'
 import { EmailChangeForm } from './components/email-change-form'
 import { ProfileForm } from './components/profile-form'
 
@@ -76,6 +77,10 @@ async function ProfileContent() {
 
       <section className="rounded-lg border bg-background p-6">
         <EmailChangeForm />
+      </section>
+
+      <section className="rounded-lg border bg-background p-6">
+        <ChangePasswordForm />
       </section>
     </main>
   )

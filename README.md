@@ -139,7 +139,7 @@ scripts/               Utilitários operacionais
 - Ativação com invariantes de cargos e vínculos.
 - Criação, edição, desativação e reativação de cargos.
 - Listagem, alteração de cargo e desativação de membros com motivo e auditoria.
-- Perfil do titular com edição de nome/telefone e alteração de email confirmada no novo endereço.
+- Perfil do titular com edição de nome/telefone, alteração de email confirmada no novo endereço e troca de senha com revogação das outras sessões.
 - Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
 - Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes, reenvio de link e resolução de contato divergente pelo titular.
 - Painel de solicitações de organização para administradores da plataforma, com pendentes, aprovadas e rejeitadas, paginado.
