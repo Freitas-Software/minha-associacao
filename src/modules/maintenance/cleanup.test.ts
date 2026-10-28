@@ -40,6 +40,10 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
         id uuid PRIMARY KEY,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+      CREATE TEMP TABLE email_change_requests (
+        id uuid PRIMARY KEY,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
       CREATE TEMP TABLE login_rate_limits (
         key varchar(64) PRIMARY KEY,
         expires_at timestamptz NOT NULL
@@ -88,6 +92,11 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
         [randomUUID(), old, randomUUID(), recent],
       )
       await pool.query(
+        `INSERT INTO pg_temp.email_change_requests (id, created_at)
+         VALUES ($1, $2), ($3, $4)`,
+        [randomUUID(), old, randomUUID(), recent],
+      )
+      await pool.query(
         'INSERT INTO pg_temp.login_rate_limits (key, expires_at) VALUES ($1, $2), ($3, $4)',
         ['old-key', old, 'recent-key', recent],
       )
@@ -97,7 +106,7 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
       'deletes only records beyond the retention window',
       async () => {
         await pool.query(
-          'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.login_rate_limits',
+          'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.email_change_requests, pg_temp.login_rate_limits',
         )
         await seed()
 
@@ -107,6 +116,7 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
           sessions: 3,
           registrationRequests: 1,
           passwordResetRequests: 1,
+          emailChangeRequests: 1,
           loginRateLimits: 1,
         })
 
@@ -114,12 +124,14 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
           sessions: number
           registration_requests: number
           password_reset_requests: number
+          email_change_requests: number
           login_rate_limits: number
         }>(
           `SELECT
           (SELECT count(*)::int FROM pg_temp.sessions) AS sessions,
           (SELECT count(*)::int FROM pg_temp.registration_requests) AS registration_requests,
           (SELECT count(*)::int FROM pg_temp.password_reset_requests) AS password_reset_requests,
+          (SELECT count(*)::int FROM pg_temp.email_change_requests) AS email_change_requests,
           (SELECT count(*)::int FROM pg_temp.login_rate_limits) AS login_rate_limits`,
         )
 
@@ -127,6 +139,7 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
           sessions: 1,
           registration_requests: 1,
           password_reset_requests: 1,
+          email_change_requests: 1,
           login_rate_limits: 1,
         })
       },
@@ -139,6 +152,7 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
           sessions: 0,
           registrationRequests: 0,
           passwordResetRequests: 0,
+          emailChangeRequests: 0,
           loginRateLimits: 0,
         })
       },
@@ -146,7 +160,7 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
 
     await t.test('does not delete recent revoked sessions', async () => {
       await pool.query(
-        'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.login_rate_limits',
+        'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.email_change_requests, pg_temp.login_rate_limits',
       )
 
       const now = new Date()
