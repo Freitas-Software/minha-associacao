@@ -7,6 +7,8 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core'
 import { v7 as uuidv7 } from 'uuid'
+import { organizations } from './organizations'
+import { roles } from './roles'
 import { users } from './users'
 
 export const registrationRequests = pgTable(
@@ -16,6 +18,9 @@ export const registrationRequests = pgTable(
       .primaryKey()
       .$defaultFn(() => uuidv7()),
     userId: uuid('user_id').references(() => users.id),
+    organizationId: uuid('organization_id').references(() => organizations.id),
+    roleId: uuid('role_id').references(() => roles.id),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id),
     name: varchar({ length: 255 }).notNull(),
     documentNumber: varchar('document_number', {
       length: 11,
