@@ -430,6 +430,45 @@ test('organization requests on PostgreSQL, using temporary tables', {
 
       assert.equal(pending.requests.length, 0)
 
+      const byLegalName = await listOrganizationRequests(
+        adminId,
+        'approved',
+        { query: 'ASSOCIACAO' },
+        database,
+      )
+
+      assert.equal(byLegalName.status, 'ok')
+
+      if (byLegalName.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(byLegalName.requests.length, 1)
+
+      const byRequester = await listOrganizationRequests(
+        adminId,
+        'approved',
+        { query: 'requester' },
+        database,
+      )
+
+      assert.equal(byRequester.status, 'ok')
+
+      if (byRequester.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(byRequester.requests.length, 1)
+
+      const noResults = await listOrganizationRequests(
+        adminId,
+        'approved',
+        { query: 'inexistente' },
+        database,
+      )
+
+      assert.equal(noResults.status, 'ok')
+
+      if (noResults.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(noResults.requests.length, 0)
+
       const firstPage = await listOrganizationRequests(
         adminId,
         'approved',
