@@ -30,6 +30,22 @@ export async function completeRegistration(
     if (result.status === 'invalid-link')
       return { success: false, message: invalidRequestMessage }
 
+    if (result.status === 'membership-unavailable') {
+      return {
+        success: false,
+        message:
+          'A organização ou o cargo deste convite não está mais disponível. Peça à organização um novo pré-cadastro.',
+      }
+    }
+
+    if (result.status === 'contact-choice-invalid') {
+      return {
+        success: false,
+        message:
+          'O contato escolhido não está mais disponível. Recarregue a página e tente novamente.',
+      }
+    }
+
     return { success: true }
   } catch {
     console.error('[completeRegistration]', { stage: 'complete' })
