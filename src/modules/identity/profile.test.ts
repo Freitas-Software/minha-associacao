@@ -18,10 +18,11 @@ test('profile on PostgreSQL, using temporary tables', {
     max: 1,
     connectionTimeoutMillis: 3000,
   })
-  const database = drizzle({ client: pool, relations: defineRelations(schema) })
+  const client = await pool.connect()
+  const database = drizzle({ client, relations: defineRelations(schema) })
 
   try {
-    await pool.query(`
+    await client.query(`
       CREATE TEMP TABLE users (
         id uuid PRIMARY KEY,
         "accountId" uuid,
@@ -40,7 +41,7 @@ test('profile on PostgreSQL, using temporary tables', {
     const userId = randomUUID()
     const otherId = randomUUID()
 
-    await pool.query(
+    await client.query(
       `INSERT INTO pg_temp.users
         (id, name, document_number, email, email_verified_at, phone, birth_date)
        VALUES
@@ -103,6 +104,7 @@ test('profile on PostgreSQL, using temporary tables', {
       assert.equal(await getProfile(randomUUID(), database), null)
     })
   } finally {
+    client.release()
     await pool.end()
   }
 })
