@@ -641,7 +641,7 @@ test('organization domain on PostgreSQL, using temporary tables', {
         const result = await listAuditEvents(
           presidentId,
           organizationId,
-          10,
+          { limit: 10 },
           database,
         )
 
@@ -659,8 +659,52 @@ test('organization domain on PostgreSQL, using temporary tables', {
           hasFullAccess: true,
         })
 
+        const filtered = await listAuditEvents(
+          presidentId,
+          organizationId,
+          { action: 'role.created' },
+          database,
+        )
+
+        assert.equal(filtered.status, 'ok')
+
+        if (filtered.status !== 'ok') throw new Error('Expected audit events')
+
+        assert.equal(filtered.events.length, 1)
+
+        const firstPage = await listAuditEvents(
+          presidentId,
+          organizationId,
+          { limit: 1 },
+          database,
+        )
+
+        assert.equal(firstPage.status, 'ok')
+
+        if (firstPage.status !== 'ok') throw new Error('Expected audit events')
+
+        assert.equal(firstPage.events.length, 1)
+
+        const secondPage = await listAuditEvents(
+          presidentId,
+          organizationId,
+          { limit: 1, offset: 1 },
+          database,
+        )
+
+        assert.equal(secondPage.status, 'ok')
+
+        if (secondPage.status !== 'ok') throw new Error('Expected audit events')
+
+        assert.equal(secondPage.events.length, 1)
+
         assert.deepEqual(
-          await listAuditEvents(outsiderId, organizationId, 10, database),
+          await listAuditEvents(
+            outsiderId,
+            organizationId,
+            { limit: 10 },
+            database,
+          ),
           { status: 'forbidden' },
         )
       },
