@@ -22,11 +22,13 @@ import {
 import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
 import {
   approveOrganizationRequest,
-  ORGANIZATION_REQUEST_DOCUMENT_TYPES,
-  ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
   rejectOrganizationRequest,
   requestOrganization,
 } from '@/modules/organizations/organization-request.server'
+import {
+  ORGANIZATION_REQUEST_DOCUMENT_TYPES,
+  ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
+} from '@/modules/organizations/organization-request-limits'
 
 function readText(formData: FormData, key: string): string {
   const value = formData.get(key)
