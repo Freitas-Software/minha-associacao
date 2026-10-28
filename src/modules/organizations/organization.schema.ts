@@ -15,17 +15,25 @@ export const cnpjSchema = z
     error: 'Informe um CNPJ válido.',
   })
 
+const acronymSchema = z
+  .string()
+  .trim()
+  .min(2, { error: 'Informe uma sigla com pelo menos 2 caracteres.' })
+  .max(32, { error: 'A sigla deve ter no máximo 32 caracteres.' })
+
 export const createOrganizationSchema = z.object({
   cnpj: cnpjSchema,
-  acronym: z
-    .string()
-    .trim()
-    .min(2, { error: 'Informe uma sigla com pelo menos 2 caracteres.' })
-    .max(32, { error: 'A sigla deve ter no máximo 32 caracteres.' }),
+  acronym: acronymSchema,
+})
+
+export const updateOrganizationSchema = z.object({
+  acronym: acronymSchema,
 })
 
 export type CreateOrganizationInput = z.input<typeof createOrganizationSchema>
 export type CreateOrganizationData = z.output<typeof createOrganizationSchema>
+export type UpdateOrganizationInput = z.input<typeof updateOrganizationSchema>
+export type UpdateOrganizationData = z.output<typeof updateOrganizationSchema>
 
 const roleFields = z.object({
   name: z

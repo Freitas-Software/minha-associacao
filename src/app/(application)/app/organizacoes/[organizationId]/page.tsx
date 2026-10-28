@@ -30,6 +30,9 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
   const canViewMembers =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.membersRead)
+  const canUpdateOrganization =
+    summary.access.hasFullAccess ||
+    summary.access.permissions.includes(PERMISSIONS.organizationUpdate)
   const canManageRoles =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.rolesManage)
@@ -105,6 +108,26 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
           ) : (
             <p className="mt-4 text-xs text-muted-foreground">
               Você não tem permissão para gerenciar cargos.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border bg-background p-5">
+          <h2 className="font-semibold">Configurações</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ajuste a sigla da organização e consulte os dados vinculados ao
+            CNPJ.
+          </p>
+          {canUpdateOrganization ? (
+            <Link
+              href={`/app/organizacoes/${summary.organization.id}/configuracoes`}
+              className="mt-4 inline-block text-sm underline underline-offset-4"
+            >
+              Abrir configurações
+            </Link>
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Você não tem permissão para editar a organização.
             </p>
           )}
         </div>

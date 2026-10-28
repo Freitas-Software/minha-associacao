@@ -14,6 +14,7 @@ import {
   createOrganization,
   createRole,
   deactivateMembership,
+  updateOrganization,
 } from './organization.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
@@ -531,6 +532,59 @@ test('organization domain on PostgreSQL, using temporary tables', {
 
       assert.equal(audit.rowCount, 1)
     })
+    await t.test(
+      'updates the organization acronym with permission',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const outsiderId = await createUser('outsider')
+        const organizationId = await createOrganizationRow(presidentId)
+        const fullAccessRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, fullAccessRoleId)
+
+        assert.deepEqual(
+          await updateOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              data: { acronym: 'NOVA' },
+            },
+            database,
+          ),
+          { status: 'updated' },
+        )
+
+        const organization = await pool.query<{ acronym: string }>(
+          'SELECT acronym FROM pg_temp.organizations WHERE id = $1',
+          [organizationId],
+        )
+
+        assert.equal(organization.rows[0].acronym, 'NOVA')
+
+        const audit = await pool.query<{ action: string }>(
+          "SELECT action FROM pg_temp.audit_events WHERE action = 'organization.updated'",
+        )
+
+        assert.equal(audit.rowCount, 1)
+
+        assert.deepEqual(
+          await updateOrganization(
+            {
+              actorUserId: outsiderId,
+              organizationId,
+              data: { acronym: 'OUTRA' },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+      },
+    )
   } finally {
     await pool.end()
   }
