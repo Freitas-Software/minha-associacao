@@ -41,6 +41,8 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - CNPJ deve ser validado externamente e não pode identificar organizações duplicadas. A razão social vem da consulta; a sigla pode ser ajustada.
 - O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar a existência do CNPJ. A viabilidade de comprovar o vínculo entre o CPF autenticado e o CNPJ ainda precisa ser verificada.
 - Enquanto o vínculo CPF/CNPJ não estiver comprovado por fonte confiável, o administrador da plataforma valida a ata de eleição para reconhecer a autoridade do presidente.
+- O presidente solicita a criação da organização informando o CNPJ e a ata de eleição. O administrador da plataforma analisa a ata e aprova ou rejeita a solicitação.
+- Na aprovação, a organização é criada em PROVISIONING com um cargo padrão de ingresso, um cargo de presidente com diretoria e acesso completo, e o solicitante como presidente ativo.
 - Após a validação, o sistema sugere e aplica por padrão a inclusão do criador como presidente com acesso completo, informando esse comportamento. O usuário pode alterar essa configuração.
 - A administração da plataforma pode cadastrar somente dados básicos. Alguém da diretoria deverá concluir a configuração posteriormente.
 - Quando o administrador da plataforma inicia a organização, ele indica um CPF para receber uma concessão temporária de configuração. Essa concessão não é vínculo nem acesso completo e termina com a ativação.
@@ -114,7 +116,7 @@ Estes pontos não são regras já resolvidas nem autorização para implementar 
 - Verificar se a BrasilAPI fornece dados suficientes e confiáveis para comprovar o vínculo CPF/CNPJ. A consulta de CNPJ e a validação da ata pelo administrador da plataforma são o caminho provisório confirmado.
 - Definir recuperação de acesso quando o titular não controla mais o email cadastrado, já que o fluxo confirmado usa somente o email vinculado.
 - Avaliar proteção adicional contra abuso e concorrência além dos limites, do uso único e da renovação confirmados.
-- Definir os limites dos poderes administrativos além do cadastro básico de organizações.
+- Definir os limites dos poderes administrativos além do cadastro básico de organizações e da análise/aprovação de solicitações de criação.
 - Não importar todas as regras financeiras detalhadas, prazos de convites ou outras funcionalidades antigas sem confirmação específica.
 
 ## Como manter este documento
