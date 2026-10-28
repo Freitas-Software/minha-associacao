@@ -8,6 +8,7 @@ import * as schema from '@/db/schema'
 import {
   acceptInvite,
   createInvite,
+  resendInvite,
   revokeInvite,
   validateInviteToken,
 } from './invite.server'
@@ -492,6 +493,65 @@ test('invite domain on PostgreSQL, using temporary tables', {
 
       assert.equal(audit.rowCount, 1)
     })
+    await t.test(
+      'resends an invite and invalidates the previous link',
+      async () => {
+        const inviteeId = await createUser('resend-target')
+        const documentNumber = await getDocument(inviteeId)
+
+        const created = await createInvite(
+          {
+            actorUserId: actorId,
+            organizationId,
+            type: 'individual',
+            roleId: defaultRoleId,
+            documentNumber,
+            expiresAt: new Date(Date.now() + 7 * DAY_MS),
+          },
+          database,
+        )
+
+        if (created.status !== 'created') throw new Error('Expected invite')
+
+        assert.deepEqual(
+          await resendInvite(
+            { actorUserId: actorId, inviteId: created.inviteId },
+            database,
+          ),
+          { status: 'rate-limited' },
+        )
+
+        await pool.query(
+          "UPDATE pg_temp.invites SET created_at = now() - interval '2 minutes' WHERE id = $1",
+          [created.inviteId],
+        )
+
+        const resent = await resendInvite(
+          { actorUserId: actorId, inviteId: created.inviteId },
+          database,
+        )
+
+        assert.equal(resent.status, 'resent')
+
+        if (resent.status !== 'resent') throw new Error('Expected resend')
+
+        assert.equal(await validateInviteToken(created.token, database), null)
+        assert.ok(await validateInviteToken(resent.token, database))
+
+        const previous = await pool.query<{ revoked_at: Date | null }>(
+          'SELECT revoked_at FROM pg_temp.invites WHERE id = $1',
+          [created.inviteId],
+        )
+
+        assert.notEqual(previous.rows[0].revoked_at, null)
+
+        const audit = await pool.query<{ action: string }>(
+          "SELECT action FROM pg_temp.audit_events WHERE action = 'invite.resent'",
+        )
+
+        assert.equal(audit.rowCount, 1)
+      },
+    )
   } finally {
     await pool.end()
   }
