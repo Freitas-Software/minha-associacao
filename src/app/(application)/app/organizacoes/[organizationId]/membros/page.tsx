@@ -60,6 +60,14 @@ async function MembersContent({ params }: MembersPageProps) {
         <p className="text-sm text-muted-foreground">
           {summary.organization.legalName}
         </p>
+        {canManage ? (
+          <Link
+            href={`/app/organizacoes/${summary.organization.id}/membros/pre-cadastrar`}
+            className="inline-block text-sm underline underline-offset-4"
+          >
+            Pré-cadastrar pessoa
+          </Link>
+        ) : null}
       </header>
 
       {membersData.memberships.length === 0 ? (
