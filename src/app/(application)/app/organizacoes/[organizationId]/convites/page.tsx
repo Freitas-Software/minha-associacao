@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
 import { getInviteManagementData } from '@/modules/invites/invite.server'
 import { CreateInviteForm } from './components/create-invite-form'
+import { ResendInviteButton } from './components/resend-invite-button'
 import { RevokeInviteButton } from './components/revoke-invite-button'
 
 export const metadata: Metadata = {
@@ -141,10 +142,16 @@ async function InviteManagementContent({ params }: InvitePageProps) {
                     </div>
 
                     {invite.revokedAt === null ? (
-                      <RevokeInviteButton
-                        organizationId={data.organization.id}
-                        inviteId={invite.id}
-                      />
+                      <div className="flex flex-col gap-3">
+                        <ResendInviteButton
+                          organizationId={data.organization.id}
+                          inviteId={invite.id}
+                        />
+                        <RevokeInviteButton
+                          organizationId={data.organization.id}
+                          inviteId={invite.id}
+                        />
+                      </div>
                     ) : null}
                   </div>
                 </li>

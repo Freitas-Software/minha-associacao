@@ -81,7 +81,10 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Na conclusão pelo link, revalidar o convite: ele ainda deve estar válido e ter usos disponíveis.
 - Se a pessoa já for membro ativo, o convite não duplica o vínculo, não altera seu cargo e não consome uso do convite compartilhado.
 - Se o vínculo estiver inativo, reutilizá-lo na reativação, com o cargo indicado pelo convite ou o cargo padrão aplicável. Essa reativação consome um uso do convite compartilhado.
-- Convites podem expirar e ser revogados, preservando histórico. Prazos e detalhes não confirmados nesta conversa não devem ser importados do sistema antigo por suposição.
+- Convites podem expirar e ser revogados, preservando histórico.
+- Convite individual expira em 7 dias e tem 1 uso. Convite compartilhado expira em 30 dias e usa o limite de usos definido pelo operador.
+- Reenviar um convite invalida o link anterior e só é permitido após 60 segundos da criação do convite atual.
+- Convites expirados, revogados ou esgotados não podem ser aceitos.
 
 ## Desativação, inadimplência e histórico
 

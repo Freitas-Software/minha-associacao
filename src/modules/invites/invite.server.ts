@@ -15,6 +15,11 @@ import {
   hasPermission,
 } from '@/modules/authorization/authorize.server'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
+import {
+  INVITE_INDIVIDUAL_TTL_MS,
+  INVITE_RESEND_INTERVAL_MS,
+  INVITE_SHARED_TTL_MS,
+} from './invite-policy'
 import { createInviteToken, hashInviteToken } from './invite-token'
 
 export type InviteType = 'individual' | 'shared'
@@ -153,6 +158,142 @@ export async function createInvite(
     return {
       status: 'created' as const,
       inviteId: invite.id,
+      token: generated.token,
+    }
+  })
+}
+
+export type ResendInviteResult =
+  | { status: 'resent'; inviteId: string; token: string }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'already-revoked' }
+  | { status: 'rate-limited' }
+  | { status: 'invalid-role' }
+
+export async function resendInvite(
+  input: {
+    actorUserId: string
+    inviteId: string
+  },
+  database: typeof db = db,
+): Promise<ResendInviteResult> {
+  const [invite] = await database
+    .select({
+      id: invites.id,
+      organizationId: invites.organizationId,
+      roleId: invites.roleId,
+      type: invites.type,
+      documentNumber: invites.documentNumber,
+      maxUses: invites.maxUses,
+      revokedAt: invites.revokedAt,
+      createdAt: invites.createdAt,
+    })
+    .from(invites)
+    .where(eq(invites.id, input.inviteId))
+    .limit(1)
+
+  if (!invite) return { status: 'not-found' }
+
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    invite.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.invitesManage)) {
+    return { status: 'forbidden' }
+  }
+
+  if (invite.revokedAt) return { status: 'already-revoked' }
+
+  const now = new Date()
+
+  if (now.getTime() - invite.createdAt.getTime() < INVITE_RESEND_INTERVAL_MS) {
+    return { status: 'rate-limited' }
+  }
+
+  if (invite.roleId) {
+    const [role] = await database
+      .select({
+        isDirector: roles.isDirector,
+        hasFullAccess: roles.hasFullAccess,
+      })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, invite.roleId),
+          eq(roles.organizationId, invite.organizationId),
+          eq(roles.isActive, true),
+        ),
+      )
+      .limit(1)
+
+    if (!role) return { status: 'invalid-role' }
+    if (invite.type === 'shared' && (role.isDirector || role.hasFullAccess)) {
+      return { status: 'invalid-role' }
+    }
+  }
+
+  const generated = createInviteToken()
+  const expiresAt = new Date(
+    now.getTime() +
+      (invite.type === 'individual'
+        ? INVITE_INDIVIDUAL_TTL_MS
+        : INVITE_SHARED_TTL_MS),
+  )
+
+  return database.transaction(async tx => {
+    const [current] = await tx
+      .select({
+        id: invites.id,
+        revokedAt: invites.revokedAt,
+      })
+      .from(invites)
+      .where(eq(invites.id, invite.id))
+      .limit(1)
+      .for('update')
+
+    if (!current) return { status: 'not-found' as const }
+    if (current.revokedAt) return { status: 'already-revoked' as const }
+
+    const [resent] = await tx
+      .insert(invites)
+      .values({
+        organizationId: invite.organizationId,
+        roleId: invite.roleId,
+        type: invite.type,
+        documentNumber: invite.documentNumber,
+        tokenHash: generated.tokenHash,
+        maxUses: invite.maxUses,
+        expiresAt,
+        createdByUserId: input.actorUserId,
+        createdByMembershipId: access.membershipId,
+      })
+      .returning({ id: invites.id })
+
+    if (!resent) throw new Error('O reenvio do convite não retornou um ID.')
+
+    await tx
+      .update(invites)
+      .set({ revokedAt: now })
+      .where(eq(invites.id, invite.id))
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: invite.organizationId,
+      action: 'invite.resent',
+      entityType: 'invite',
+      entityId: resent.id,
+      metadata: {
+        previousInviteId: invite.id,
+        type: invite.type,
+      },
+    })
+
+    return {
+      status: 'resent' as const,
+      inviteId: resent.id,
       token: generated.token,
     }
   })

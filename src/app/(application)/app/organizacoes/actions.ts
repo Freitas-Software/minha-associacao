@@ -7,6 +7,7 @@ import { requestRegistrationSchema } from '@/modules/identity/registration.schem
 import {
   acceptInvite,
   createInvite,
+  resendInvite,
   revokeInvite,
 } from '@/modules/invites/invite.server'
 import type { InviteActionState } from '@/modules/invites/invite-action-state'
@@ -1099,6 +1100,76 @@ export async function resendPreRegistrationAction(
     return {
       status: 'error',
       message: 'Não foi possível reenviar o link agora.',
+    }
+  }
+}
+
+export async function resendInviteAction(
+  _previousState: InviteActionState,
+  formData: FormData,
+): Promise<InviteActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const inviteId = readText(formData, 'inviteId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(inviteId).success
+  ) {
+    return { status: 'error', message: 'Convite inválido.' }
+  }
+
+  try {
+    const result = await resendInvite({
+      actorUserId: session.userId,
+      inviteId,
+    })
+
+    if (result.status === 'resent') {
+      revalidatePath(`/app/organizacoes/${organizationId}/convites`)
+      return {
+        status: 'success',
+        message:
+          'Convite reenviado. O link anterior foi invalidado; copie o novo link abaixo.',
+        inviteUrl: inviteAcceptanceUrl(result.token),
+      }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para reenviar este convite.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Convite não encontrado.' }
+      case 'already-revoked':
+        return {
+          status: 'error',
+          message: 'Este convite já foi revogado e não pode ser reenviado.',
+        }
+      case 'rate-limited':
+        return {
+          status: 'error',
+          message:
+            'Aguarde um minuto após a criação do convite antes de reenviá-lo.',
+        }
+      case 'invalid-role':
+        return {
+          status: 'error',
+          message: 'O cargo deste convite não está mais disponível.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível reenviar o convite agora.',
+    }
+  } catch {
+    console.error('[resendInviteAction]', { stage: 'resend' })
+    return {
+      status: 'error',
+      message: 'Não foi possível reenviar o convite agora.',
     }
   }
 }
