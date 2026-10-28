@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   experimental: {
     agentUpgrade: 'security',
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
   },
   cacheComponents: true,
   partialPrefetching: true,
