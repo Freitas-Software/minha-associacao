@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --conditions=react-server --env-file-if-exists=.env.local --test \"src/**/*.test.ts\"",
     "db:migrate": "drizzle-kit migrate",
+    "platform-admin:grant": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/grant-platform-admin.ts",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
