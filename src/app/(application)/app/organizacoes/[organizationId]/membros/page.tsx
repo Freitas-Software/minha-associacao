@@ -7,9 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
 import {
+  type AssignableRole,
   getOrganizationSummary,
+  listAssignableRoles,
   listOrganizationMemberships,
 } from '@/modules/organizations/organization.server'
+import { ChangeMemberRoleForm } from './components/change-member-role-form'
 import { DeactivateMemberForm } from './components/deactivate-member-form'
 
 export const metadata: Metadata = {
@@ -44,6 +47,14 @@ async function MembersContent({ params }: MembersPageProps) {
   const canManage =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.membersManage)
+
+  let assignableRoles: AssignableRole[] = []
+
+  if (canManage) {
+    const rolesData = await listAssignableRoles(session.userId, organizationId)
+
+    if (rolesData.status === 'ok') assignableRoles = rolesData.roles
+  }
 
   return (
     <main className="space-y-8">
@@ -119,6 +130,19 @@ async function MembersContent({ params }: MembersPageProps) {
                   </Link>
                 ) : null}
               </div>
+
+              {member.status === 'active' &&
+              canManage &&
+              assignableRoles.length > 1 &&
+              assignableRoles.some(role => role.id === member.roleId) ? (
+                <ChangeMemberRoleForm
+                  organizationId={summary.organization.id}
+                  membershipId={member.membershipId}
+                  memberName={member.name}
+                  currentRoleId={member.roleId}
+                  roles={assignableRoles}
+                />
+              ) : null}
 
               {member.status === 'active' && canManage ? (
                 <DeactivateMemberForm

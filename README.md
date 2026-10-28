@@ -138,7 +138,7 @@ scripts/               Utilitários operacionais
 - Criação da organização em provisionamento, cargos iniciais e presidente ativo.
 - Ativação com invariantes de cargos e vínculos.
 - Criação, edição, desativação e reativação de cargos.
-- Listagem e desativação de membros com motivo e auditoria.
+- Listagem, alteração de cargo e desativação de membros com motivo e auditoria.
 - Perfil do titular com edição de nome/telefone e alteração de email confirmada no novo endereço.
 - Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
 - Pré-cadastro por operador, com escolha de cargo, link de ativação e resolução de contato divergente pelo titular.

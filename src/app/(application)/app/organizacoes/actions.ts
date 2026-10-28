@@ -25,6 +25,7 @@ import {
   activateOrganization,
   createRole,
   deactivateMembership,
+  updateMembershipRole,
   updateOrganization,
   updateRole,
 } from '@/modules/organizations/organization.server'
@@ -934,6 +935,86 @@ export async function updateOrganizationAction(
     return {
       status: 'error',
       message: 'Não foi possível atualizar a organização agora.',
+    }
+  }
+}
+
+export async function updateMembershipRoleAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const membershipId = readText(formData, 'membershipId')
+  const roleId = readText(formData, 'roleId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(membershipId).success ||
+    !z.uuid().safeParse(roleId).success
+  ) {
+    return { status: 'error', message: 'Vínculo ou cargo inválido.' }
+  }
+
+  try {
+    const result = await updateMembershipRole({
+      actorUserId: session.userId,
+      membershipId,
+      roleId,
+    })
+
+    if (result.status === 'updated') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/membros`)
+      revalidatePath(`/app/organizacoes/${organizationId}/auditoria`)
+      return { status: 'success', message: 'Cargo do vínculo atualizado.' }
+    }
+
+    if (result.status === 'unchanged') {
+      return { status: 'success', message: 'O vínculo já usa este cargo.' }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para alterar cargos de membros.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Vínculo não encontrado.' }
+      case 'inactive-membership':
+        return {
+          status: 'error',
+          message: 'Reative o vínculo antes de alterar o cargo.',
+        }
+      case 'invalid-role':
+        return {
+          status: 'error',
+          message: 'O cargo selecionado não está ativo nesta organização.',
+        }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você não pode atribuir um cargo com acesso completo sem ter acesso completo.',
+        }
+      case 'last-full-access-member':
+        return {
+          status: 'error',
+          message:
+            'A organização precisa manter pelo menos um membro ativo com acesso completo.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível alterar o cargo do vínculo agora.',
+    }
+  } catch {
+    console.error('[updateMembershipRoleAction]', { stage: 'update' })
+    return {
+      status: 'error',
+      message: 'Não foi possível alterar o cargo do vínculo agora.',
     }
   }
 }
