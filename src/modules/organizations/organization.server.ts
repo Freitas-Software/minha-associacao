@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, desc, eq, gt, isNull, lt, ne, or } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, isNull, lt, ne, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   invites,
@@ -659,9 +659,16 @@ export type ListOrganizationMembershipsResult =
   | { status: 'ok'; memberships: OrganizationMembershipListItem[] }
   | { status: 'forbidden' }
 
+export type ListOrganizationMembershipsOptions = {
+  query?: string
+  limit?: number
+  offset?: number
+}
+
 export async function listOrganizationMemberships(
   actorUserId: string,
   organizationId: string,
+  options: ListOrganizationMembershipsOptions = {},
   database: typeof db = db,
 ): Promise<ListOrganizationMembershipsResult> {
   const access = await getOrganizationAccess(
@@ -673,6 +680,17 @@ export async function listOrganizationMemberships(
   if (!access || !hasPermission(access, PERMISSIONS.membersRead)) {
     return { status: 'forbidden' }
   }
+
+  const query = options.query?.trim()
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+  const searchCondition = query
+    ? or(
+        ilike(users.name, `%${query}%`),
+        ilike(users.email, `%${query}%`),
+        ilike(users.documentNumber, `%${query}%`),
+      )
+    : undefined
 
   const rows = await database
     .select({
@@ -697,8 +715,10 @@ export async function listOrganizationMemberships(
         eq(roles.organizationId, memberships.organizationId),
       ),
     )
-    .where(eq(memberships.organizationId, organizationId))
+    .where(and(eq(memberships.organizationId, organizationId), searchCondition))
     .orderBy(users.name)
+    .limit(limit)
+    .offset(offset)
 
   return { status: 'ok', memberships: rows }
 }

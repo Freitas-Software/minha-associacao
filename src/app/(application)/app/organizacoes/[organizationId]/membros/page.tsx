@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { requireSession } from '@/lib/session'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
 import {
@@ -25,6 +27,33 @@ export const metadata: Metadata = {
 
 type MembersPageProps = {
   params: Promise<{ organizationId: string }>
+  searchParams: Promise<{
+    q?: string | string[]
+    page?: string | string[]
+  }>
+}
+
+const pageSize = 30
+
+function resolveQuery(value: string | string[] | undefined): string {
+  return typeof value === 'string' ? value.trim().slice(0, 100) : ''
+}
+
+function resolvePage(value: string | string[] | undefined): number {
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function pageHref(organizationId: string, query: string, page: number): string {
+  const params = new URLSearchParams()
+
+  if (query) params.set('q', query)
+  if (page > 1) params.set('page', String(page))
+
+  const search = params.toString()
+
+  return `/app/organizacoes/${organizationId}/membros${search ? `?${search}` : ''}`
 }
 
 function formatDate(date: Date): string {
@@ -42,17 +71,29 @@ function maskDocument(documentNumber: string): string {
   return `***.***.***-${documentNumber.slice(-2)}`
 }
 
-async function MembersContent({ params }: MembersPageProps) {
+async function MembersContent({ params, searchParams }: MembersPageProps) {
   await io()
 
   const { organizationId } = await params
+  const search = await searchParams
+  const query = resolveQuery(search.q)
+  const page = resolvePage(search.page)
   const session = await requireSession()
   const [summary, membersData] = await Promise.all([
     getOrganizationSummary(session.userId, organizationId),
-    listOrganizationMemberships(session.userId, organizationId),
+    listOrganizationMemberships(session.userId, organizationId, {
+      query: query || undefined,
+      limit: pageSize + 1,
+      offset: (page - 1) * pageSize,
+    }),
   ])
 
   if (summary.status !== 'ok' || membersData.status !== 'ok') notFound()
+
+  const hasNext = membersData.memberships.length > pageSize
+  const members = hasNext
+    ? membersData.memberships.slice(0, pageSize)
+    : membersData.memberships
 
   const canManage =
     summary.access.hasFullAccess ||
@@ -97,6 +138,25 @@ async function MembersContent({ params }: MembersPageProps) {
           </Link>
         ) : null}
       </header>
+
+      <form method="get" className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1 space-y-1">
+          <label htmlFor="member-search" className="block text-sm font-medium">
+            Buscar membro
+          </label>
+          <Input
+            id="member-search"
+            name="q"
+            type="search"
+            defaultValue={query}
+            maxLength={100}
+            placeholder="Nome, email ou CPF"
+          />
+        </div>
+        <Button type="submit" variant="outline">
+          Buscar
+        </Button>
+      </form>
 
       {pendingPreRegistrations.length > 0 ? (
         <section className="space-y-3">
@@ -144,13 +204,15 @@ async function MembersContent({ params }: MembersPageProps) {
         </section>
       ) : null}
 
-      {membersData.memberships.length === 0 ? (
+      {members.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nenhum vínculo encontrado.
+          {query
+            ? 'Nenhum membro encontrado para esta busca.'
+            : 'Nenhum vínculo encontrado.'}
         </p>
       ) : (
         <ul className="space-y-4">
-          {membersData.memberships.map(member => (
+          {members.map(member => (
             <li
               key={member.membershipId}
               className="space-y-4 rounded-lg border bg-background p-5"
@@ -218,11 +280,38 @@ async function MembersContent({ params }: MembersPageProps) {
           ))}
         </ul>
       )}
+
+      {page > 1 || hasNext ? (
+        <nav
+          aria-label="Paginação de membros"
+          className="flex flex-wrap items-center gap-3"
+        >
+          {page > 1 ? (
+            <Link
+              href={pageHref(summary.organization.id, query, page - 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              ← Anterior
+            </Link>
+          ) : null}
+          {hasNext ? (
+            <Link
+              href={pageHref(summary.organization.id, query, page + 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              Próxima →
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
     </main>
   )
 }
 
-export default function MembersPage({ params }: MembersPageProps) {
+export default function MembersPage({
+  params,
+  searchParams,
+}: MembersPageProps) {
   return (
     <Suspense
       fallback={
@@ -231,7 +320,7 @@ export default function MembersPage({ params }: MembersPageProps) {
         </p>
       }
     >
-      <MembersContent params={params} />
+      <MembersContent params={params} searchParams={searchParams} />
     </Suspense>
   )
 }
