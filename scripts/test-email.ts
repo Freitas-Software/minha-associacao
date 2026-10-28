@@ -11,9 +11,9 @@ async function main(): Promise<void> {
 
   const result = await sendEmail({
     to: recipient.data,
-    subject: 'Teste de envio — Minha Associação',
+    subject: 'Teste de envio — Associae',
     text: [
-      'Este é um teste de envio do Minha Associação.',
+      'Este é um teste de envio da Associae.',
       '',
       'Nenhuma conta foi criada ou alterada.',
     ].join('\n'),

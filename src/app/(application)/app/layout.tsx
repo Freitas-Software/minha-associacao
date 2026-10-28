@@ -4,8 +4,8 @@ import { AppShell } from '../../../components/application/app-shell'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Aplicação | Minha Associação',
-    template: '%s | Minha Associação',
+    default: 'Aplicação | Associae',
+    template: '%s | Associae',
   },
   robots: { index: false, follow: false },
 }

@@ -41,7 +41,7 @@ export async function requestPasswordReset(
         try {
           await sendEmail({
             to: pending.email,
-            subject: 'Redefina sua senha — Minha Associação',
+            subject: 'Redefina sua senha — Associae',
             text: [
               'Recebemos uma solicitação de recuperação de senha.',
               'Use o link abaixo para definir uma nova senha. Ele é válido por 30 minutos e só pode ser usado uma vez.',

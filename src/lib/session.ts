@@ -15,8 +15,8 @@ export const SESSION_IDLE_DURATION_MS = 7 * DAY_MS
 const isProduction = process.env.NODE_ENV === 'production'
 
 export const SESSION_COOKIE_NAME = isProduction
-  ? '__Host-minha-associacao-session'
-  : 'minha-associacao-session'
+  ? '__Host-associae-session'
+  : 'associae-session'
 
 export function hashSessionToken(token: string): string {
   return createHash('sha256').update(token, 'utf-8').digest('hex')

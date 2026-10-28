@@ -1,7 +1,7 @@
-# Minha Associação — Agent Instructions
+# Associae — Agent Instructions
 
 ## Project Context
-Minha Associação is a fullstack application built with Next.js 16.4.3, React 19, TypeScript, pnpm, and Biome. The repository contains the landing page, web app, API, and admin panel.
+Associae is a fullstack application built with Next.js 16.4.3, React 19, TypeScript, pnpm, and Biome. The repository contains the landing page, web app, API, and admin panel.
 
 ## Development Guidelines
 - Follow existing project patterns and native framework conventions.

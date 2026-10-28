@@ -24,8 +24,8 @@ const fontMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Minha Associação',
-    template: '%s | Minha Associação',
+    default: 'Associae',
+    template: '%s | Associae',
   },
   description: 'Plataforma de gestão para associações e organizações.',
 }

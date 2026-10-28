@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="mx-auto flex max-w-7xl flex-wrap items-center gap-6 px-6 py-5"
         >
           <Link href="/app" className="font-semibold text-primary">
-            Minha Associação · App
+            Associae · App
           </Link>
           <Link href="/app/users" className="text-sm hover:underline">
             Usuários

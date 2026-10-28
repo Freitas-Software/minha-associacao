@@ -20,7 +20,7 @@ export function LandingHero() {
             <span className="text-primary">que fazem a diferença</span>
           </h1>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            O Minha Associação ajuda sua organização a se organizar, comunicar,
+            A Associae ajuda sua organização a se organizar, comunicar,
             administrar e manter tudo em dia, de forma simples e acessível, no
             computador e no celular.
           </p>

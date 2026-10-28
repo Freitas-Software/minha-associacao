@@ -20,9 +20,7 @@ async function AccountHome() {
         Olá, {session.name}
       </h1>
 
-      <p className="text-sm text-muted-foreground">
-        Bem-vindo ao Minha Associação.
-      </p>
+      <p className="text-sm text-muted-foreground">Bem-vindo à Associae.</p>
 
       <LogoutButton />
       <EndOtherSessionsButton />
