@@ -33,6 +33,9 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
   const canUpdateOrganization =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.organizationUpdate)
+  const canViewAudit =
+    summary.access.hasFullAccess ||
+    summary.access.permissions.includes(PERMISSIONS.auditRead)
   const canManageRoles =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.rolesManage)
@@ -147,6 +150,25 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
           ) : (
             <p className="mt-4 text-xs text-muted-foreground">
               Você não tem permissão para gerenciar convites.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border bg-background p-5">
+          <h2 className="font-semibold">Auditoria</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Consulte os eventos registrados na organização.
+          </p>
+          {canViewAudit ? (
+            <Link
+              href={`/app/organizacoes/${summary.organization.id}/auditoria`}
+              className="mt-4 inline-block text-sm underline underline-offset-4"
+            >
+              Ver auditoria
+            </Link>
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Você não tem permissão para ver auditoria.
             </p>
           )}
         </div>
