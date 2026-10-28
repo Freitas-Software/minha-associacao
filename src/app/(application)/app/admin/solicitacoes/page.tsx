@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 type AdminRequestsPageProps = {
   searchParams: Promise<{
     status?: string | string[]
+    page?: string | string[]
   }>
 }
 
@@ -29,20 +30,35 @@ const statusLabels: Record<OrganizationRequestStatus, string> = {
   rejected: 'Rejeitadas',
 }
 
-const statusTabs: Array<{
-  status: OrganizationRequestStatus
-  href: string
-}> = [
-  { status: 'pending', href: '/app/admin/solicitacoes' },
-  { status: 'approved', href: '/app/admin/solicitacoes?status=approved' },
-  { status: 'rejected', href: '/app/admin/solicitacoes?status=rejected' },
+const statusTabs: OrganizationRequestStatus[] = [
+  'pending',
+  'approved',
+  'rejected',
 ]
+const pageSize = 20
 
 function resolveStatus(
   value: string | string[] | undefined,
 ): OrganizationRequestStatus {
   if (value === 'approved' || value === 'rejected') return value
   return 'pending'
+}
+
+function resolvePage(value: string | string[] | undefined): number {
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function pageHref(status: OrganizationRequestStatus, page: number): string {
+  const params = new URLSearchParams()
+
+  if (status !== 'pending') params.set('status', status)
+  if (page > 1) params.set('page', String(page))
+
+  const query = params.toString()
+
+  return `/app/admin/solicitacoes${query ? `?${query}` : ''}`
 }
 
 function formatDate(date: Date): string {
@@ -68,13 +84,20 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
 
   const params = await searchParams
   const status = resolveStatus(params.status)
+  const page = resolvePage(params.page)
   const session = await requireSession()
 
   if (!(await isPlatformAdmin(session.userId))) notFound()
 
-  const data = await listOrganizationRequests(session.userId, status)
+  const data = await listOrganizationRequests(session.userId, status, {
+    limit: pageSize + 1,
+    offset: (page - 1) * pageSize,
+  })
 
   if (data.status !== 'ok') notFound()
+
+  const hasNext = data.requests.length > pageSize
+  const requests = hasNext ? data.requests.slice(0, pageSize) : data.requests
 
   return (
     <main className="space-y-8">
@@ -97,12 +120,12 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
 
       <nav aria-label="Filtrar solicitações" className="flex flex-wrap gap-2">
         {statusTabs.map(tab => {
-          const active = tab.status === status
+          const active = tab === status
 
           return (
             <Link
-              key={tab.status}
-              href={tab.href}
+              key={tab}
+              href={pageHref(tab, 1)}
               aria-current={active ? 'page' : undefined}
               className={
                 active
@@ -110,13 +133,13 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
                   : 'rounded-full border px-3 py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
               }
             >
-              {statusLabels[tab.status]}
+              {statusLabels[tab]}
             </Link>
           )
         })}
       </nav>
 
-      {data.requests.length === 0 ? (
+      {requests.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-background p-6">
           <p className="text-sm text-muted-foreground">
             Nenhuma solicitação {statusLabels[status].toLowerCase()}.
@@ -129,7 +152,7 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
         </div>
       ) : (
         <ul className="space-y-4">
-          {data.requests.map(request => (
+          {requests.map(request => (
             <li
               key={request.id}
               className="space-y-4 rounded-lg border bg-background p-5"
@@ -187,6 +210,30 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
           ))}
         </ul>
       )}
+
+      {page > 1 || hasNext ? (
+        <nav
+          aria-label="Paginação das solicitações"
+          className="flex flex-wrap items-center gap-3"
+        >
+          {page > 1 ? (
+            <Link
+              href={pageHref(status, page - 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              ← Anterior
+            </Link>
+          ) : null}
+          {hasNext ? (
+            <Link
+              href={pageHref(status, page + 1)}
+              className="text-sm underline underline-offset-4"
+            >
+              Próxima →
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
     </main>
   )
 }
