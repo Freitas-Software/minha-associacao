@@ -17,6 +17,7 @@ import {
   deactivateMembership,
   listAdminOrganizations,
   listAssignableRoles,
+  listOrganizationMemberships,
   listPendingPreRegistrations,
   updateMembershipRole,
   updateOrganization,
@@ -960,6 +961,77 @@ test('organization domain on PostgreSQL, using temporary tables', {
         )
       },
     )
+    await t.test('searches and paginates organization members', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const aliceId = await createUser('Alice')
+      const bobId = await createUser('Bob')
+      const outsiderId = await createUser('outsider')
+      const organizationId = await createOrganizationRow(presidentId)
+      const presidentRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const memberRoleId = await createRoleRow(organizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+
+      await createMembershipRow(organizationId, presidentId, presidentRoleId)
+      await createMembershipRow(organizationId, aliceId, memberRoleId)
+      await createMembershipRow(organizationId, bobId, memberRoleId)
+
+      const search = await listOrganizationMemberships(
+        presidentId,
+        organizationId,
+        { query: 'Alice' },
+        database,
+      )
+
+      assert.equal(search.status, 'ok')
+
+      if (search.status !== 'ok') throw new Error('Expected memberships')
+
+      assert.equal(search.memberships.length, 1)
+      assert.equal(search.memberships[0].name, 'Alice')
+
+      const firstPage = await listOrganizationMemberships(
+        presidentId,
+        organizationId,
+        { limit: 1 },
+        database,
+      )
+
+      assert.equal(firstPage.status, 'ok')
+
+      if (firstPage.status !== 'ok') throw new Error('Expected memberships')
+
+      assert.equal(firstPage.memberships.length, 1)
+
+      const secondPage = await listOrganizationMemberships(
+        presidentId,
+        organizationId,
+        { limit: 1, offset: 1 },
+        database,
+      )
+
+      assert.equal(secondPage.status, 'ok')
+
+      if (secondPage.status !== 'ok') throw new Error('Expected memberships')
+
+      assert.equal(secondPage.memberships.length, 1)
+
+      assert.deepEqual(
+        await listOrganizationMemberships(
+          outsiderId,
+          organizationId,
+          {},
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+    })
   } finally {
     await pool.end()
   }
