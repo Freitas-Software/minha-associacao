@@ -33,6 +33,9 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Pelo link validado, a pessoa define sua senha e conclui a criação da conta vinculada ao perfil existente.
 - A confirmação de email antes da criação da conta e a definição da senha pelo link também valem para cadastro público e ingresso por convite compartilhado.
 - Uma pessoa que já possui conta faz login para aceitar convites; não cria outra conta.
+- O pré-cadastro por operador reutiliza `registration_requests`, vinculando a solicitação à organização, ao cargo inicial e ao operador responsável.
+- O operador escolhe o cargo inicial da pessoa, com o cargo padrão pré-selecionado; a ativação cria o vínculo ativo com esse cargo.
+- Quando o contato informado pelo operador divergir do contato já registrado, a divergência é registrada. O link é enviado ao email já cadastrado e o titular escolhe qual contato manter ao concluir a conta.
 
 ## Organizações e configuração inicial
 
