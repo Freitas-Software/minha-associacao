@@ -15,6 +15,11 @@ const items = [
     label: 'Organizações',
     isActive: (path: string) => path.startsWith('/app/organizacoes'),
   },
+  {
+    href: '/app/perfil',
+    label: 'Perfil',
+    isActive: (path: string) => path.startsWith('/app/perfil'),
+  },
 ]
 
 function navLinkClass(active: boolean): string {
