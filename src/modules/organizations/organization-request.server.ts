@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   memberships,
@@ -186,6 +186,7 @@ export type AdminOrganizationRequest = {
 }
 
 export type ListOrganizationRequestsOptions = {
+  query?: string
   limit?: number
   offset?: number
 }
@@ -205,6 +206,19 @@ export async function listOrganizationRequests(
 
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
+  const search = options.query?.trim()
+  const documentDigits = search?.replaceAll(/\D/g, '') ?? ''
+  const searchCondition = search
+    ? or(
+        ilike(organizationRequests.legalName, `%${search}%`),
+        ilike(organizationRequests.acronym, `%${search}%`),
+        ilike(users.name, `%${search}%`),
+        ilike(users.email, `%${search}%`),
+        ...(documentDigits
+          ? [ilike(organizationRequests.cnpj, `%${documentDigits}%`)]
+          : []),
+      )
+    : undefined
 
   const requests = await database
     .select({
@@ -225,7 +239,7 @@ export async function listOrganizationRequests(
     })
     .from(organizationRequests)
     .innerJoin(users, eq(users.id, organizationRequests.requesterUserId))
-    .where(eq(organizationRequests.status, status))
+    .where(and(eq(organizationRequests.status, status), searchCondition))
     .orderBy(
       status === 'pending'
         ? asc(organizationRequests.createdAt)

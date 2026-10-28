@@ -143,7 +143,7 @@ scripts/               Utilitários operacionais
 - Gestão de sessões ativas, com identificação da sessão atual e encerramento individual.
 - Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
 - Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes, reenvio de link e resolução de contato divergente pelo titular.
-- Painel de solicitações de organização para administradores da plataforma, com pendentes, aprovadas e rejeitadas, paginado.
+- Painel de solicitações de organização para administradores da plataforma, com pendentes, aprovadas e rejeitadas, busca e paginação.
 - Listagem somente leitura das organizações da plataforma, com filtro por status e paginação.
 - Auditoria por organização, com permissão `audit.read`, filtro por evento, paginação e detalhes.
 
