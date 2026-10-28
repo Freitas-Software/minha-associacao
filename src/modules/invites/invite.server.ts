@@ -1,5 +1,18 @@
 import 'server-only'
-import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { db } from '@/db'
 import {
   inviteRedemptions,
@@ -685,9 +698,23 @@ export type InviteManagementData =
   | { status: 'forbidden' }
   | { status: 'not-found' }
 
+export type InviteManagementFilter =
+  | 'active'
+  | 'expired'
+  | 'exhausted'
+  | 'revoked'
+
+export type InviteManagementOptions = {
+  status?: InviteManagementFilter
+  query?: string
+  limit?: number
+  offset?: number
+}
+
 export async function getInviteManagementData(
   actorUserId: string,
   organizationId: string,
+  options: InviteManagementOptions = {},
   database: typeof db = db,
 ): Promise<InviteManagementData> {
   const access = await getOrganizationAccess(
@@ -727,6 +754,44 @@ export async function getInviteManagementData(
     )
     .orderBy(roles.name)
 
+  const now = new Date()
+  const search = options.query?.trim()
+  const documentDigits = search?.replaceAll(/\D/g, '') ?? ''
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 50)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const statusCondition =
+    options.status === 'revoked'
+      ? isNotNull(invites.revokedAt)
+      : options.status === 'expired'
+        ? and(isNull(invites.revokedAt), lte(invites.expiresAt, now))
+        : options.status === 'exhausted'
+          ? and(
+              isNull(invites.revokedAt),
+              gt(invites.expiresAt, now),
+              isNotNull(invites.maxUses),
+              gte(invites.usesCount, invites.maxUses),
+            )
+          : options.status === 'active'
+            ? and(
+                isNull(invites.revokedAt),
+                gt(invites.expiresAt, now),
+                or(
+                  isNull(invites.maxUses),
+                  lt(invites.usesCount, invites.maxUses),
+                ),
+              )
+            : undefined
+
+  const searchCondition = search
+    ? or(
+        ilike(roles.name, `%${search}%`),
+        ...(documentDigits
+          ? [ilike(invites.documentNumber, `%${documentDigits}%`)]
+          : []),
+      )
+    : undefined
+
   const inviteRows = await database
     .select({
       id: invites.id,
@@ -747,8 +812,16 @@ export async function getInviteManagementData(
         eq(roles.organizationId, invites.organizationId),
       ),
     )
-    .where(eq(invites.organizationId, organizationId))
+    .where(
+      and(
+        eq(invites.organizationId, organizationId),
+        statusCondition,
+        searchCondition,
+      ),
+    )
     .orderBy(desc(invites.createdAt))
+    .limit(limit)
+    .offset(offset)
 
   return {
     status: 'ok',

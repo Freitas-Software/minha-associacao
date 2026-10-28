@@ -4,8 +4,13 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { requireSession } from '@/lib/session'
-import { getInviteManagementData } from '@/modules/invites/invite.server'
+import {
+  getInviteManagementData,
+  type InviteManagementFilter,
+} from '@/modules/invites/invite.server'
 import { CreateInviteForm } from './components/create-invite-form'
 import { ResendInviteButton } from './components/resend-invite-button'
 import { RevokeInviteButton } from './components/revoke-invite-button'
@@ -17,6 +22,66 @@ export const metadata: Metadata = {
 
 type InvitePageProps = {
   params: Promise<{ organizationId: string }>
+  searchParams: Promise<{
+    status?: string | string[]
+    q?: string | string[]
+    page?: string | string[]
+  }>
+}
+
+const pageSize = 20
+
+const statusTabs: Array<{
+  value: InviteManagementFilter | undefined
+  label: string
+}> = [
+  { value: undefined, label: 'Todos' },
+  { value: 'active', label: 'Ativos' },
+  { value: 'expired', label: 'Expirados' },
+  { value: 'exhausted', label: 'Esgotados' },
+  { value: 'revoked', label: 'Revogados' },
+]
+
+function resolveFilter(
+  value: string | string[] | undefined,
+): InviteManagementFilter | undefined {
+  if (
+    value === 'active' ||
+    value === 'expired' ||
+    value === 'exhausted' ||
+    value === 'revoked'
+  ) {
+    return value
+  }
+
+  return undefined
+}
+
+function resolveQuery(value: string | string[] | undefined): string {
+  return typeof value === 'string' ? value.trim().slice(0, 100) : ''
+}
+
+function resolvePage(value: string | string[] | undefined): number {
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function pageHref(
+  organizationId: string,
+  status: InviteManagementFilter | undefined,
+  query: string,
+  page: number,
+): string {
+  const params = new URLSearchParams()
+
+  if (status) params.set('status', status)
+  if (query) params.set('q', query)
+  if (page > 1) params.set('page', String(page))
+
+  const search = params.toString()
+
+  return `/app/organizacoes/${organizationId}/convites${search ? `?${search}` : ''}`
 }
 
 function formatDate(date: Date): string {
@@ -50,15 +115,29 @@ function maskDocument(documentNumber: string | null): string {
   return `***.***.***-${documentNumber.slice(-2)}`
 }
 
-async function InviteManagementContent({ params }: InvitePageProps) {
+async function InviteManagementContent({
+  params,
+  searchParams,
+}: InvitePageProps) {
   await io()
 
   const { organizationId } = await params
+  const filters = await searchParams
+  const status = resolveFilter(filters.status)
+  const query = resolveQuery(filters.q)
+  const page = resolvePage(filters.page)
   const session = await requireSession()
-  const data = await getInviteManagementData(session.userId, organizationId)
+  const data = await getInviteManagementData(session.userId, organizationId, {
+    status,
+    query: query || undefined,
+    limit: pageSize + 1,
+    offset: (page - 1) * pageSize,
+  })
 
   if (data.status !== 'ok') notFound()
 
+  const hasNext = data.invites.length > pageSize
+  const invites = hasNext ? data.invites.slice(0, pageSize) : data.invites
   const now = new Date()
 
   return (
@@ -90,6 +169,50 @@ async function InviteManagementContent({ params }: InvitePageProps) {
           Convites emitidos
         </h2>
 
+        <form method="get" className="flex flex-wrap items-end gap-3">
+          {status ? <input type="hidden" name="status" value={status} /> : null}
+          <div className="min-w-0 flex-1 space-y-1">
+            <label
+              htmlFor="invite-search"
+              className="block text-sm font-medium"
+            >
+              Buscar convite
+            </label>
+            <Input
+              id="invite-search"
+              name="q"
+              type="search"
+              defaultValue={query}
+              maxLength={100}
+              placeholder="CPF ou cargo"
+            />
+          </div>
+          <Button type="submit" variant="outline">
+            Buscar
+          </Button>
+        </form>
+
+        <nav aria-label="Filtrar convites" className="flex flex-wrap gap-2">
+          {statusTabs.map(tab => {
+            const active = tab.value === status
+
+            return (
+              <Link
+                key={tab.label}
+                href={pageHref(data.organization.id, tab.value, query, 1)}
+                aria-current={active ? 'page' : undefined}
+                className={
+                  active
+                    ? 'rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+                    : 'rounded-full border px-3 py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+                }
+              >
+                {tab.label}
+              </Link>
+            )
+          })}
+        </nav>
+
         {data.invites.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-background p-6">
             <p className="text-sm text-muted-foreground">
@@ -102,7 +225,7 @@ async function InviteManagementContent({ params }: InvitePageProps) {
           </div>
         ) : (
           <ul className="space-y-3">
-            {data.invites.map(invite => {
+            {invites.map(invite => {
               const status = inviteStatus(invite, now)
 
               return (
@@ -164,7 +287,10 @@ async function InviteManagementContent({ params }: InvitePageProps) {
   )
 }
 
-export default function InviteManagementPage({ params }: InvitePageProps) {
+export default function InviteManagementPage({
+  params,
+  searchParams,
+}: InvitePageProps) {
   return (
     <Suspense
       fallback={
@@ -173,7 +299,7 @@ export default function InviteManagementPage({ params }: InvitePageProps) {
         </p>
       }
     >
-      <InviteManagementContent params={params} />
+      <InviteManagementContent params={params} searchParams={searchParams} />
     </Suspense>
   )
 }
