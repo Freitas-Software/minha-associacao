@@ -185,9 +185,15 @@ export type AdminOrganizationRequest = {
   createdAt: Date
 }
 
+export type ListOrganizationRequestsOptions = {
+  limit?: number
+  offset?: number
+}
+
 export async function listOrganizationRequests(
   adminUserId: string,
   status: OrganizationRequestStatus,
+  options: ListOrganizationRequestsOptions = {},
   database: typeof db = db,
 ): Promise<
   | { status: 'ok'; requests: AdminOrganizationRequest[] }
@@ -196,6 +202,9 @@ export async function listOrganizationRequests(
   if (!(await isPlatformAdmin(adminUserId, database))) {
     return { status: 'forbidden' }
   }
+
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
 
   const requests = await database
     .select({
@@ -222,6 +231,8 @@ export async function listOrganizationRequests(
         ? asc(organizationRequests.createdAt)
         : desc(organizationRequests.createdAt),
     )
+    .limit(limit)
+    .offset(offset)
 
   return { status: 'ok', requests }
 }
@@ -233,7 +244,7 @@ export async function listPendingOrganizationRequests(
   | { status: 'ok'; requests: AdminOrganizationRequest[] }
   | { status: 'forbidden' }
 > {
-  return listOrganizationRequests(adminUserId, 'pending', database)
+  return listOrganizationRequests(adminUserId, 'pending', {}, database)
 }
 
 export type ApproveOrganizationRequestResult =
