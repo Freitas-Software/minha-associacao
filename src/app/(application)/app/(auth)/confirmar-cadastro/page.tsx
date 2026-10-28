@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { completeRegistrationSchema } from '@/modules/identity/registration.schema'
+import { getRegistrationContactContext } from '@/modules/identity/registration-contact.server'
 import { ConfirmationForm } from './components/confirmation-form'
 
 export const metadata: Metadata = {
@@ -42,7 +43,15 @@ async function ConfirmationContent({ searchParams }: ConfirmationPageProps) {
     )
   }
 
-  return <ConfirmationForm key={parsedToken.data} token={parsedToken.data} />
+  const contactContext = await getRegistrationContactContext(parsedToken.data)
+
+  return (
+    <ConfirmationForm
+      key={parsedToken.data}
+      token={parsedToken.data}
+      contactContext={contactContext}
+    />
+  )
 }
 
 export default function ConfirmationPage({

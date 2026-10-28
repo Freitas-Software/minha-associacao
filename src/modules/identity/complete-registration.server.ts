@@ -2,13 +2,22 @@ import 'server-only'
 import { hash } from '@node-rs/argon2'
 import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { accounts, registrationRequests, users } from '@/db/schema'
+import {
+  accounts,
+  memberships,
+  registrationContactConflicts,
+  registrationRequests,
+  roles,
+  users,
+} from '@/db/schema'
 import type { CompleteRegistrationData } from './registration.schema'
 import { hashRegistrationToken } from './registration-token.server'
 
 export type CompleteRegistrationResult =
   | { status: 'completed' }
   | { status: 'invalid-link' }
+  | { status: 'membership-unavailable' }
+  | { status: 'contact-choice-invalid' }
 
 /**
  * Conclui o cadastro a partir do token enviado por email.
@@ -47,7 +56,7 @@ export async function completeRegistration(
     outputLen: 32,
   })
 
-  const completed = await database.transaction(async tx => {
+  return database.transaction(async tx => {
     await tx.execute(sql`
       select pg_advisory_xact_lock(
         hashtextextended(
@@ -72,7 +81,7 @@ export async function completeRegistration(
       .limit(1)
       .for('update')
 
-    if (!request) return false
+    if (!request) return { status: 'invalid-link' as const }
 
     const [existingAccount] = await tx
       .select({ id: accounts.id })
@@ -80,27 +89,103 @@ export async function completeRegistration(
       .where(eq(accounts.login, request.documentNumber))
       .limit(1)
 
-    if (existingAccount) return false
+    if (existingAccount) return { status: 'invalid-link' as const }
 
     const [existingUser] = await tx
       .select({
         id: users.id,
         accountId: users.accountId,
         email: users.email,
+        phone: users.phone,
       })
       .from(users)
       .where(eq(users.documentNumber, request.documentNumber))
       .limit(1)
       .for('update')
 
-    if (existingUser?.accountId) return false
+    if (existingUser?.accountId) return { status: 'invalid-link' as const }
 
     if (request.userId !== null && request.userId !== existingUser?.id) {
-      return false
+      return { status: 'invalid-link' as const }
     }
 
     if (existingUser && existingUser.email !== request.email) {
-      return false
+      return { status: 'invalid-link' as const }
+    }
+
+    const organizationId = request.organizationId
+    const roleId = request.roleId
+
+    if ((organizationId === null) !== (roleId === null)) {
+      return { status: 'membership-unavailable' as const }
+    }
+
+    if (organizationId && roleId) {
+      const [role] = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(
+          and(
+            eq(roles.id, roleId),
+            eq(roles.organizationId, organizationId),
+            eq(roles.isActive, true),
+          ),
+        )
+        .limit(1)
+
+      if (!role) return { status: 'membership-unavailable' as const }
+
+      if (existingUser) {
+        const [existingMembership] = await tx
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.organizationId, organizationId),
+              eq(memberships.userId, existingUser.id),
+            ),
+          )
+          .limit(1)
+
+        if (existingMembership) {
+          return { status: 'membership-unavailable' as const }
+        }
+      }
+    }
+
+    let selectedContact: { email: string; phone: string } | null = null
+
+    if (existingUser) {
+      const conflicts = await tx
+        .select({
+          id: registrationContactConflicts.id,
+          email: registrationContactConflicts.email,
+          phone: registrationContactConflicts.phone,
+        })
+        .from(registrationContactConflicts)
+        .where(
+          and(
+            eq(registrationContactConflicts.userId, existingUser.id),
+            isNull(registrationContactConflicts.resolvedAt),
+          ),
+        )
+
+      if (data.contactChoice && data.contactChoice !== 'existing') {
+        const chosen = conflicts.find(
+          conflict => conflict.id === data.contactChoice,
+        )
+
+        if (!chosen) return { status: 'contact-choice-invalid' as const }
+
+        selectedContact = { email: chosen.email, phone: chosen.phone }
+      } else {
+        selectedContact = {
+          email: existingUser.email,
+          phone: existingUser.phone,
+        }
+      }
+    } else if (data.contactChoice && data.contactChoice !== 'existing') {
+      return { status: 'contact-choice-invalid' as const }
     }
 
     const now = new Date()
@@ -117,11 +202,15 @@ export async function completeRegistration(
       throw new Error('A criação da conta não retornou um ID.')
     }
 
-    if (existingUser) {
+    let resolvedUserId: string
+
+    if (existingUser && selectedContact) {
       const [linkedUser] = await tx
         .update(users)
         .set({
           accountId: account.id,
+          email: selectedContact.email,
+          phone: selectedContact.phone,
           emailVerifiedAt: now,
           updatedAt: now,
         })
@@ -137,15 +226,45 @@ export async function completeRegistration(
       if (!linkedUser) {
         throw new Error('Não foi possível vincular a conta.')
       }
+
+      resolvedUserId = linkedUser.id
+
+      await tx
+        .update(registrationContactConflicts)
+        .set({ resolvedAt: now })
+        .where(
+          and(
+            eq(registrationContactConflicts.userId, existingUser.id),
+            isNull(registrationContactConflicts.resolvedAt),
+          ),
+        )
     } else {
-      await tx.insert(users).values({
-        accountId: account.id,
-        name: request.name,
-        documentNumber: request.documentNumber,
-        email: request.email,
-        emailVerifiedAt: now,
-        phone: request.phone,
-        birthDate: request.birthDate,
+      const [createdUser] = await tx
+        .insert(users)
+        .values({
+          accountId: account.id,
+          name: request.name,
+          documentNumber: request.documentNumber,
+          email: request.email,
+          emailVerifiedAt: now,
+          phone: request.phone,
+          birthDate: request.birthDate,
+        })
+        .returning({ id: users.id })
+
+      if (!createdUser) {
+        throw new Error('A criação do perfil não retornou um ID.')
+      }
+
+      resolvedUserId = createdUser.id
+    }
+
+    if (organizationId && roleId) {
+      await tx.insert(memberships).values({
+        organizationId,
+        userId: resolvedUserId,
+        roleId,
+        status: 'active',
       })
     }
 
@@ -177,8 +296,6 @@ export async function completeRegistration(
         ),
       )
 
-    return true
+    return { status: 'completed' as const }
   })
-
-  return completed ? { status: 'completed' } : { status: 'invalid-link' }
 }

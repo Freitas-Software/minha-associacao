@@ -22,6 +22,7 @@ import {
   completeRegistrationSchema,
   passwordSchema,
 } from '@/modules/identity/registration.schema'
+import type { RegistrationContactContext } from '@/modules/identity/registration-contact.server'
 import { completeRegistration } from '../actions'
 
 const confirmationFormSchema = z
@@ -35,10 +36,17 @@ const confirmationFormSchema = z
     path: ['passwordConfirmation'],
   })
 
-export function ConfirmationForm({ token }: { token: string }) {
+export function ConfirmationForm({
+  token,
+  contactContext,
+}: {
+  token: string
+  contactContext: RegistrationContactContext | null
+}) {
   const formRef = useRef<HTMLFormElement>(null)
   const [completed, setCompleted] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [contactChoice, setContactChoice] = useState('existing')
 
   const form = useForm({
     defaultValues: {
@@ -57,6 +65,10 @@ export function ConfirmationForm({ token }: { token: string }) {
         const result = await completeRegistration({
           token: value.token,
           password: value.password,
+          contactChoice:
+            contactContext && contactContext.conflicts.length > 0
+              ? contactChoice
+              : undefined,
         })
 
         if (!result.success) {
@@ -110,6 +122,58 @@ export function ConfirmationForm({ token }: { token: string }) {
             <FieldLegend className="sr-only">
               Defina a senha da sua conta
             </FieldLegend>
+
+            {contactContext && contactContext.conflicts.length > 0 ? (
+              <FieldSet>
+                <FieldLegend variant="label">Contato da conta</FieldLegend>
+                <FieldDescription>
+                  Uma ou mais organizações informaram um contato diferente do
+                  seu cadastro. Escolha qual contato deseja manter.
+                </FieldDescription>
+
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm">
+                    <input
+                      type="radio"
+                      name="contactChoice"
+                      value="existing"
+                      checked={contactChoice === 'existing'}
+                      onChange={() => setContactChoice('existing')}
+                      className="mt-0.5 size-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    />
+                    <span>
+                      Manter meu contato atual
+                      <span className="block text-xs text-muted-foreground">
+                        {contactContext.currentEmail} ·{' '}
+                        {contactContext.currentPhone}
+                      </span>
+                    </span>
+                  </label>
+
+                  {contactContext.conflicts.map(conflict => (
+                    <label
+                      key={conflict.id}
+                      className="flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <input
+                        type="radio"
+                        name="contactChoice"
+                        value={conflict.id}
+                        checked={contactChoice === conflict.id}
+                        onChange={() => setContactChoice(conflict.id)}
+                        className="mt-0.5 size-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      />
+                      <span>
+                        Usar o contato informado por {conflict.organizationName}
+                        <span className="block text-xs text-muted-foreground">
+                          {conflict.email} · {conflict.phone}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </FieldSet>
+            ) : null}
 
             <FieldGroup>
               <form.Field

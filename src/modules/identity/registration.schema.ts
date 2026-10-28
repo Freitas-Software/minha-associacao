@@ -82,6 +82,7 @@ export const completeRegistrationSchema = z.object({
     error: 'O link de confirmação é inválido.',
   }),
   password: passwordSchema,
+  contactChoice: z.union([z.literal('existing'), z.uuid()]).optional(),
 })
 
 export type CompleteRegistrationInput = z.input<
