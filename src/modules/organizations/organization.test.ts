@@ -15,6 +15,7 @@ import {
   createOrganization,
   createRole,
   deactivateMembership,
+  listAdminOrganizations,
   listAssignableRoles,
   listPendingPreRegistrations,
   updateMembershipRole,
@@ -847,6 +848,70 @@ test('organization domain on PostgreSQL, using temporary tables', {
             organizationId,
             database,
           ),
+          { status: 'forbidden' },
+        )
+      },
+    )
+    await t.test(
+      'lists organizations for platform admins with filters',
+      async () => {
+        await reset()
+
+        const adminId = await createUser('admin')
+        const outsiderId = await createUser('outsider')
+
+        await createPlatformAdmin(adminId)
+        await createOrganizationRow(adminId, 'provisioning')
+        await createOrganizationRow(adminId, 'active')
+
+        const all = await listAdminOrganizations(adminId, {}, database)
+
+        assert.equal(all.status, 'ok')
+
+        if (all.status !== 'ok') throw new Error('Expected organizations')
+
+        assert.equal(all.organizations.length, 2)
+
+        const active = await listAdminOrganizations(
+          adminId,
+          { status: 'active' },
+          database,
+        )
+
+        assert.equal(active.status, 'ok')
+
+        if (active.status !== 'ok') throw new Error('Expected organizations')
+
+        assert.equal(active.organizations.length, 1)
+        assert.equal(active.organizations[0].status, 'active')
+
+        const firstPage = await listAdminOrganizations(
+          adminId,
+          { limit: 1 },
+          database,
+        )
+
+        assert.equal(firstPage.status, 'ok')
+
+        if (firstPage.status !== 'ok') throw new Error('Expected organizations')
+
+        assert.equal(firstPage.organizations.length, 1)
+
+        const secondPage = await listAdminOrganizations(
+          adminId,
+          { limit: 1, offset: 1 },
+          database,
+        )
+
+        assert.equal(secondPage.status, 'ok')
+
+        if (secondPage.status !== 'ok')
+          throw new Error('Expected organizations')
+
+        assert.equal(secondPage.organizations.length, 1)
+
+        assert.deepEqual(
+          await listAdminOrganizations(outsiderId, {}, database),
           { status: 'forbidden' },
         )
       },
