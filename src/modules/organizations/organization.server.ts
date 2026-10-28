@@ -525,3 +525,58 @@ export async function listUserOrganizations(
     )
     .orderBy(organizations.legalName)
 }
+
+export type OrganizationSummary =
+  | {
+      status: 'ok'
+      organization: {
+        id: string
+        legalName: string
+        acronym: string
+        status: 'provisioning' | 'active'
+      }
+      access: {
+        roleId: string
+        hasFullAccess: boolean
+        permissions: string[]
+      }
+    }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+
+export async function getOrganizationSummary(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<OrganizationSummary> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access) return { status: 'forbidden' }
+
+  const [organization] = await database
+    .select({
+      id: organizations.id,
+      legalName: organizations.legalName,
+      acronym: organizations.acronym,
+      status: organizations.status,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1)
+
+  if (!organization) return { status: 'not-found' }
+
+  return {
+    status: 'ok',
+    organization,
+    access: {
+      roleId: access.roleId,
+      hasFullAccess: access.hasFullAccess,
+      permissions: [...access.permissions],
+    },
+  }
+}
