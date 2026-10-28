@@ -17,11 +17,13 @@ import { inviteAcceptanceUrl } from '@/modules/invites/invite-url'
 import {
   createRoleSchema,
   deactivateMembershipSchema,
+  updateRoleSchema,
 } from '@/modules/organizations/organization.schema'
 import {
   activateOrganization,
   createRole,
   deactivateMembership,
+  updateRole,
 } from '@/modules/organizations/organization.server'
 import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
 import {
@@ -671,6 +673,116 @@ export async function deactivateMembershipAction(
     return {
       status: 'error',
       message: 'Não foi possível desativar o vínculo agora.',
+    }
+  }
+}
+
+export async function updateRoleAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const roleId = readText(formData, 'roleId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(roleId).success
+  ) {
+    return { status: 'error', message: 'Cargo inválido.' }
+  }
+
+  const parsed = updateRoleSchema.safeParse({
+    name: readText(formData, 'name'),
+    isDirector: formData.get('isDirector') === 'on',
+    hasFullAccess: formData.get('hasFullAccess') === 'on',
+    isDefault: formData.get('isDefault') === 'on',
+    isActive: formData.get('isActive') === 'on',
+    permissionCodes: formData
+      .getAll('permissionCodes')
+      .filter((value): value is string => typeof value === 'string'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Confira os campos.',
+    }
+  }
+
+  try {
+    const result = await updateRole({
+      actorUserId: session.userId,
+      organizationId,
+      roleId,
+      role: parsed.data,
+    })
+
+    if (result.status === 'updated') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/cargos`)
+      revalidatePath(`/app/organizacoes/${organizationId}/cargos/${roleId}`)
+      return { status: 'success', message: 'Cargo atualizado.' }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para editar cargos.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Cargo não encontrado.' }
+      case 'invalid-default-role':
+        return {
+          status: 'error',
+          message:
+            'O cargo padrão não pode ser de diretoria nem de acesso completo.',
+        }
+      case 'invalid-permission':
+        return {
+          status: 'error',
+          message: 'Uma das permissões selecionadas é inválida.',
+        }
+      case 'default-role-exists':
+        return {
+          status: 'error',
+          message: 'Já existe outro cargo padrão ativo nesta organização.',
+        }
+      case 'role-name-exists':
+        return {
+          status: 'error',
+          message: 'Já existe um cargo com este nome.',
+        }
+      case 'role-in-use':
+        return {
+          status: 'error',
+          message:
+            'Este cargo possui vínculos ou convites em uso e não pode ser desativado.',
+        }
+      case 'default-role-required':
+        return {
+          status: 'error',
+          message:
+            'A organização ativa precisa manter um cargo padrão de ingresso ativo.',
+        }
+      case 'full-access-required':
+        return {
+          status: 'error',
+          message:
+            'A organização precisa manter um membro ativo com acesso completo.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível atualizar o cargo agora.',
+    }
+  } catch {
+    console.error('[updateRoleAction]', { stage: 'update' })
+    return {
+      status: 'error',
+      message: 'Não foi possível atualizar o cargo agora.',
     }
   }
 }

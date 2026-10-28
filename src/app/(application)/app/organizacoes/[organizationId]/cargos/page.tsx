@@ -13,7 +13,7 @@ import {
   getOrganizationSummary,
   listRoles,
 } from '@/modules/organizations/organization.server'
-import { CreateRoleForm } from './components/create-role-form'
+import { RoleForm } from './components/role-form'
 
 export const metadata: Metadata = {
   title: 'Cargos',
@@ -71,7 +71,7 @@ async function RolesContent({ params }: RolesPageProps) {
 
       {canManage ? (
         <section className="rounded-lg border bg-background p-6">
-          <CreateRoleForm organizationId={summary.organization.id} />
+          <RoleForm organizationId={summary.organization.id} mode="create" />
         </section>
       ) : null}
 
@@ -93,17 +93,28 @@ async function RolesContent({ params }: RolesPageProps) {
           <ul className="space-y-3">
             {rolesData.roles.map(role => (
               <li key={role.id} className="rounded-lg border bg-background p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{role.name}</span>
-                  {role.isDefault ? (
-                    <Badge variant="secondary">Padrão</Badge>
-                  ) : null}
-                  {role.isDirector ? (
-                    <Badge variant="outline">Diretoria</Badge>
-                  ) : null}
-                  {role.hasFullAccess ? <Badge>Acesso completo</Badge> : null}
-                  {!role.isActive ? (
-                    <Badge variant="destructive">Inativo</Badge>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{role.name}</span>
+                    {role.isDefault ? (
+                      <Badge variant="secondary">Padrão</Badge>
+                    ) : null}
+                    {role.isDirector ? (
+                      <Badge variant="outline">Diretoria</Badge>
+                    ) : null}
+                    {role.hasFullAccess ? <Badge>Acesso completo</Badge> : null}
+                    {!role.isActive ? (
+                      <Badge variant="destructive">Inativo</Badge>
+                    ) : null}
+                  </div>
+
+                  {canManage ? (
+                    <Link
+                      href={`/app/organizacoes/${summary.organization.id}/cargos/${role.id}`}
+                      className="text-sm underline underline-offset-4"
+                    >
+                      Editar
+                    </Link>
                   ) : null}
                 </div>
 

@@ -1,7 +1,8 @@
 import 'server-only'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
+  invites,
   memberships,
   organizations,
   rolePermissions,
@@ -24,6 +25,7 @@ import { lookupCnpj } from './cnpj.server'
 import type {
   CreateRoleData,
   DeactivateMembershipData,
+  UpdateRoleData,
 } from './organization.schema'
 
 export type CreateOrganizationResult =
@@ -645,4 +647,244 @@ export async function listOrganizationMemberships(
     .orderBy(users.name)
 
   return { status: 'ok', memberships: rows }
+}
+
+export type UpdateRoleResult =
+  | { status: 'updated' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'invalid-default-role' }
+  | { status: 'invalid-permission' }
+  | { status: 'default-role-exists' }
+  | { status: 'role-name-exists' }
+  | { status: 'role-in-use' }
+  | { status: 'default-role-required' }
+  | { status: 'full-access-required' }
+
+export async function updateRole(
+  input: {
+    actorUserId: string
+    organizationId: string
+    roleId: string
+    role: UpdateRoleData
+  },
+  database: typeof db = db,
+): Promise<UpdateRoleResult> {
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    input.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.rolesManage)) {
+    return { status: 'forbidden' }
+  }
+
+  if (
+    input.role.isDefault &&
+    (input.role.isDirector || input.role.hasFullAccess)
+  ) {
+    return { status: 'invalid-default-role' }
+  }
+
+  const knownPermissions = new Set<string>(PERMISSION_CODES)
+
+  if (input.role.permissionCodes.some(code => !knownPermissions.has(code))) {
+    return { status: 'invalid-permission' }
+  }
+
+  try {
+    return await database.transaction(async tx => {
+      const [role] = await tx
+        .select()
+        .from(roles)
+        .where(
+          and(
+            eq(roles.id, input.roleId),
+            eq(roles.organizationId, input.organizationId),
+          ),
+        )
+        .limit(1)
+        .for('update')
+
+      if (!role) return { status: 'not-found' as const }
+
+      const now = new Date()
+      const deactivating = role.isActive && !input.role.isActive
+      const reactivating = !role.isActive && input.role.isActive
+      const remainsActive = role.isActive && input.role.isActive
+
+      if (deactivating) {
+        const [membership] = await tx
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.organizationId, input.organizationId),
+              eq(memberships.roleId, role.id),
+            ),
+          )
+          .limit(1)
+
+        if (membership) return { status: 'role-in-use' as const }
+
+        const [activeInvite] = await tx
+          .select({ id: invites.id })
+          .from(invites)
+          .where(
+            and(
+              eq(invites.organizationId, input.organizationId),
+              eq(invites.roleId, role.id),
+              isNull(invites.revokedAt),
+              gt(invites.expiresAt, now),
+              or(
+                isNull(invites.maxUses),
+                lt(invites.usesCount, invites.maxUses),
+              ),
+            ),
+          )
+          .limit(1)
+
+        if (activeInvite) return { status: 'role-in-use' as const }
+
+        if (role.isDefault) {
+          return { status: 'default-role-required' as const }
+        }
+      }
+
+      if ((remainsActive || reactivating) && input.role.isDefault) {
+        const [otherDefault] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(
+            and(
+              eq(roles.organizationId, input.organizationId),
+              eq(roles.isDefault, true),
+              eq(roles.isActive, true),
+              ne(roles.id, role.id),
+            ),
+          )
+          .limit(1)
+
+        if (otherDefault) return { status: 'default-role-exists' as const }
+      }
+
+      if (
+        role.isDefault &&
+        !input.role.isDefault &&
+        access.organizationStatus === 'active'
+      ) {
+        return { status: 'default-role-required' as const }
+      }
+
+      if (role.isDefault && input.role.isDefault && deactivating) {
+        return { status: 'default-role-required' as const }
+      }
+
+      if (
+        remainsActive &&
+        role.hasFullAccess &&
+        !input.role.hasFullAccess &&
+        access.organizationStatus === 'active'
+      ) {
+        const [activeMember] = await tx
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.organizationId, input.organizationId),
+              eq(memberships.roleId, role.id),
+              eq(memberships.status, 'active'),
+            ),
+          )
+          .limit(1)
+
+        if (activeMember) {
+          const [otherFullAccess] = await tx
+            .select({ id: memberships.id })
+            .from(memberships)
+            .innerJoin(
+              roles,
+              and(
+                eq(roles.id, memberships.roleId),
+                eq(roles.organizationId, memberships.organizationId),
+              ),
+            )
+            .where(
+              and(
+                eq(memberships.organizationId, input.organizationId),
+                eq(memberships.status, 'active'),
+                eq(roles.isActive, true),
+                eq(roles.hasFullAccess, true),
+                ne(memberships.roleId, role.id),
+              ),
+            )
+            .limit(1)
+
+          if (!otherFullAccess) {
+            return { status: 'full-access-required' as const }
+          }
+        }
+      }
+
+      const [updated] = await tx
+        .update(roles)
+        .set({
+          name: input.role.name,
+          isDirector: input.role.isDirector,
+          hasFullAccess: input.role.hasFullAccess,
+          isDefault: input.role.isDefault,
+          isActive: input.role.isActive,
+          updatedAt: now,
+        })
+        .where(eq(roles.id, role.id))
+        .returning({ id: roles.id })
+
+      if (!updated) {
+        throw new Error('A atualização do cargo não retornou um ID.')
+      }
+
+      await tx
+        .delete(rolePermissions)
+        .where(eq(rolePermissions.roleId, role.id))
+
+      if (!input.role.hasFullAccess && input.role.permissionCodes.length > 0) {
+        await tx.insert(rolePermissions).values(
+          input.role.permissionCodes.map(code => ({
+            roleId: role.id,
+            permissionCode: code,
+          })),
+        )
+      }
+
+      await recordAuditEvent(tx, {
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        action: 'role.updated',
+        entityType: 'role',
+        entityId: role.id,
+        metadata: {
+          name: input.role.name,
+          isDirector: input.role.isDirector,
+          hasFullAccess: input.role.hasFullAccess,
+          isDefault: input.role.isDefault,
+          isActive: input.role.isActive,
+        },
+      })
+
+      return { status: 'updated' as const }
+    })
+  } catch (error) {
+    const constraint = getDatabaseErrorConstraint(error)
+
+    if (constraint?.includes('roles_organization_id_default_unique')) {
+      return { status: 'default-role-exists' }
+    }
+
+    if (constraint?.includes('roles_organization_id_name_unique')) {
+      return { status: 'role-name-exists' }
+    }
+
+    throw error
+  }
 }
