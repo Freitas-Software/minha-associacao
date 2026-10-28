@@ -10,6 +10,8 @@ import { getProfile, updateProfile } from './profile.server'
 const connectionString = process.env.TEST_DATABASE_URL
 const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
 
+type ServiceDatabase = NonNullable<Parameters<typeof getProfile>[1]>
+
 test('profile on PostgreSQL, using temporary tables', {
   skip: !connectionString || !runDatabaseTests,
 }, async t => {
@@ -19,7 +21,11 @@ test('profile on PostgreSQL, using temporary tables', {
     connectionTimeoutMillis: 3000,
   })
   const client = await pool.connect()
-  const database = drizzle({ client, relations: defineRelations(schema) })
+  // Temporary tables are session-scoped, so the test keeps one client.
+  const database = drizzle({
+    client,
+    relations: defineRelations(schema),
+  }) as unknown as ServiceDatabase
 
   try {
     await client.query(`
