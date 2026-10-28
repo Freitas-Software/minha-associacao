@@ -143,6 +143,7 @@ scripts/               Utilitários operacionais
 - Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
 - Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes, reenvio de link e resolução de contato divergente pelo titular.
 - Painel de solicitações de organização para administradores da plataforma, com pendentes, aprovadas e rejeitadas, paginado.
+- Listagem somente leitura das organizações da plataforma, com filtro por status e paginação.
 - Auditoria por organização, com permissão `audit.read` e detalhes dos eventos.
 
 ## Banco de dados e migrações
