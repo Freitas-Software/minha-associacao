@@ -1,7 +1,13 @@
 import 'server-only'
 import { and, eq, ne } from 'drizzle-orm'
 import { db } from '@/db'
-import { memberships, organizations, rolePermissions, roles } from '@/db/schema'
+import {
+  memberships,
+  organizations,
+  rolePermissions,
+  roles,
+  users,
+} from '@/db/schema'
 import { getDatabaseErrorConstraint, isDatabaseError } from '@/lib/errors'
 import { recordAuditEvent } from '@/modules/audit/audit.server'
 import {
@@ -579,4 +585,64 @@ export async function getOrganizationSummary(
       permissions: [...access.permissions],
     },
   }
+}
+
+export type OrganizationMembershipListItem = {
+  membershipId: string
+  userId: string
+  name: string
+  email: string
+  documentNumber: string
+  roleName: string
+  status: 'active' | 'inactive'
+  joinedAt: Date
+  deactivatedAt: Date | null
+  deactivationReason: string | null
+}
+
+export type ListOrganizationMembershipsResult =
+  | { status: 'ok'; memberships: OrganizationMembershipListItem[] }
+  | { status: 'forbidden' }
+
+export async function listOrganizationMemberships(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<ListOrganizationMembershipsResult> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.membersRead)) {
+    return { status: 'forbidden' }
+  }
+
+  const rows = await database
+    .select({
+      membershipId: memberships.id,
+      userId: users.id,
+      name: users.name,
+      email: users.email,
+      documentNumber: users.documentNumber,
+      roleName: roles.name,
+      status: memberships.status,
+      joinedAt: memberships.joinedAt,
+      deactivatedAt: memberships.deactivatedAt,
+      deactivationReason: memberships.deactivationReason,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .innerJoin(
+      roles,
+      and(
+        eq(roles.id, memberships.roleId),
+        eq(roles.organizationId, memberships.organizationId),
+      ),
+    )
+    .where(eq(memberships.organizationId, organizationId))
+    .orderBy(users.name)
+
+  return { status: 'ok', memberships: rows }
 }
