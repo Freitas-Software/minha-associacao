@@ -27,6 +27,9 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
 
   if (summary.status !== 'ok') notFound()
 
+  const canViewMembers =
+    summary.access.hasFullAccess ||
+    summary.access.permissions.includes(PERMISSIONS.membersRead)
   const canManageRoles =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.rolesManage)
@@ -66,6 +69,26 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
       </header>
 
       <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border bg-background p-5">
+          <h2 className="font-semibold">Membros</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Consulte vínculos ativos e inativos, desative com motivo e acompanhe
+            reativações.
+          </p>
+          {canViewMembers ? (
+            <Link
+              href={`/app/organizacoes/${summary.organization.id}/membros`}
+              className="mt-4 inline-block text-sm underline underline-offset-4"
+            >
+              Gerenciar membros
+            </Link>
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Você não tem permissão para ver membros.
+            </p>
+          )}
+        </div>
+
         <div className="rounded-lg border bg-background p-5">
           <h2 className="font-semibold">Cargos e permissões</h2>
           <p className="mt-1 text-sm text-muted-foreground">

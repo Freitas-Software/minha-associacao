@@ -14,10 +14,14 @@ import {
   INVITE_SHARED_TTL_MS,
 } from '@/modules/invites/invite-policy'
 import { inviteAcceptanceUrl } from '@/modules/invites/invite-url'
-import { createRoleSchema } from '@/modules/organizations/organization.schema'
+import {
+  createRoleSchema,
+  deactivateMembershipSchema,
+} from '@/modules/organizations/organization.schema'
 import {
   activateOrganization,
   createRole,
+  deactivateMembership,
 } from '@/modules/organizations/organization.server'
 import type { OrganizationActionState } from '@/modules/organizations/organization-action-state'
 import {
@@ -598,6 +602,75 @@ export async function rejectOrganizationRequestAction(
     return {
       status: 'error',
       message: 'Não foi possível rejeitar a solicitação agora.',
+    }
+  }
+}
+
+export async function deactivateMembershipAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const membershipId = readText(formData, 'membershipId')
+  const parsed = deactivateMembershipSchema.safeParse({
+    reason: readText(formData, 'reason'),
+  })
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(membershipId).success
+  ) {
+    return { status: 'error', message: 'Vínculo inválido.' }
+  }
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Informe o motivo.',
+    }
+  }
+
+  try {
+    const result = await deactivateMembership({
+      actorUserId: session.userId,
+      membershipId,
+      reason: parsed.data.reason,
+    })
+
+    if (result.status === 'deactivated') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/membros`)
+      return { status: 'success', message: 'Vínculo desativado.' }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para desativar vínculos.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Vínculo não encontrado.' }
+      case 'already-inactive':
+        return { status: 'error', message: 'Este vínculo já está inativo.' }
+      case 'last-full-access-member':
+        return {
+          status: 'error',
+          message:
+            'A organização precisa manter pelo menos um membro ativo com acesso completo.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível desativar o vínculo agora.',
+    }
+  } catch {
+    console.error('[deactivateMembershipAction]', { stage: 'deactivate' })
+    return {
+      status: 'error',
+      message: 'Não foi possível desativar o vínculo agora.',
     }
   }
 }
