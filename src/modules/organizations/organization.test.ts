@@ -19,8 +19,10 @@ import {
   listAssignableRoles,
   listOrganizationMemberships,
   listPendingPreRegistrations,
+  listRoles,
   updateMembershipRole,
   updateOrganization,
+  updateRole,
 } from './organization.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
@@ -309,6 +311,10 @@ test('organization domain on PostgreSQL, using temporary tables', {
       assert.equal(organizations.rows[0].status, 'provisioning')
       assert.equal(organizations.rows[0].legal_name, 'ASSOCIACAO TESTE')
       assert.ok(organizations.rows[0].cnpj_verified_at)
+
+      const memberships = await pool.query('SELECT id FROM pg_temp.memberships')
+
+      assert.equal(memberships.rowCount, 0)
 
       const audit = await pool.query<{ action: string }>(
         'SELECT action FROM pg_temp.audit_events',
@@ -895,6 +901,158 @@ test('organization domain on PostgreSQL, using temporary tables', {
           ),
           { status: 'forbidden' },
         )
+      },
+    )
+    await t.test(
+      'does not grant platform admins organization authority',
+      async () => {
+        await reset()
+
+        const adminId = await createUser('admin')
+        const presidentId = await createUser('president')
+        await createPlatformAdmin(adminId)
+
+        const organizationId = await createOrganizationRow(presidentId)
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          isDirector: true,
+          hasFullAccess: true,
+        })
+        const associateRoleId = await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+        const membershipId = await createMembershipRow(
+          organizationId,
+          presidentId,
+          presidentRoleId,
+        )
+
+        assert.deepEqual(
+          await updateOrganization(
+            { actorUserId: adminId, organizationId, data: { acronym: 'NOVA' } },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await createRole(
+            {
+              actorUserId: adminId,
+              organizationId,
+              role: {
+                name: 'Tesoureiro',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: false,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateRole(
+            {
+              actorUserId: adminId,
+              organizationId,
+              roleId: associateRoleId,
+              role: {
+                name: 'Associado renomeado',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: true,
+                isActive: true,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await activateOrganization(adminId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await deactivateMembership(
+            {
+              actorUserId: adminId,
+              membershipId,
+              reason: 'Intervenção indevida',
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateMembershipRole(
+            { actorUserId: adminId, membershipId, roleId: associateRoleId },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await listOrganizationMemberships(
+            adminId,
+            organizationId,
+            {},
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await listAssignableRoles(adminId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(await listRoles(adminId, organizationId, database), {
+          status: 'forbidden',
+        })
+
+        assert.deepEqual(
+          await listPendingPreRegistrations(adminId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        const [state] = (
+          await pool.query<{
+            acronym: string
+            organization_status: string
+            role_name: string
+            membership_status: string
+            membership_role_id: string
+          }>(
+            `SELECT o.acronym, o.status AS organization_status,
+              r.name AS role_name, m.status AS membership_status,
+              m.role_id AS membership_role_id
+             FROM pg_temp.organizations o
+             JOIN pg_temp.roles r ON r.id = $2
+             JOIN pg_temp.memberships m ON m.id = $3
+             WHERE o.id = $1`,
+            [organizationId, associateRoleId, membershipId],
+          )
+        ).rows
+
+        assert.notEqual(state?.acronym, 'NOVA')
+        assert.equal(state?.organization_status, 'provisioning')
+        assert.notEqual(state?.role_name, 'Associado renomeado')
+        assert.equal(state?.membership_status, 'active')
+        assert.equal(state?.membership_role_id, presidentRoleId)
+
+        const audit = await pool.query(
+          'SELECT action FROM pg_temp.audit_events',
+        )
+
+        assert.equal(audit.rowCount, 0)
       },
     )
     await t.test(
