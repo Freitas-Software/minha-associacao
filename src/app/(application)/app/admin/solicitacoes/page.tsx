@@ -3,14 +3,46 @@ import { io } from 'next/cache'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
 import { isPlatformAdmin } from '@/modules/authorization/authorize.server'
-import { listPendingOrganizationRequests } from '@/modules/organizations/organization-request.server'
+import {
+  listOrganizationRequests,
+  type OrganizationRequestStatus,
+} from '@/modules/organizations/organization-request.server'
 import { ReviewRequestActions } from './components/review-request-actions'
 
 export const metadata: Metadata = {
   title: 'Solicitações de organizações',
   robots: { index: false, follow: false },
+}
+
+type AdminRequestsPageProps = {
+  searchParams: Promise<{
+    status?: string | string[]
+  }>
+}
+
+const statusLabels: Record<OrganizationRequestStatus, string> = {
+  pending: 'Pendentes',
+  approved: 'Aprovadas',
+  rejected: 'Rejeitadas',
+}
+
+const statusTabs: Array<{
+  status: OrganizationRequestStatus
+  href: string
+}> = [
+  { status: 'pending', href: '/app/admin/solicitacoes' },
+  { status: 'approved', href: '/app/admin/solicitacoes?status=approved' },
+  { status: 'rejected', href: '/app/admin/solicitacoes?status=rejected' },
+]
+
+function resolveStatus(
+  value: string | string[] | undefined,
+): OrganizationRequestStatus {
+  if (value === 'approved' || value === 'rejected') return value
+  return 'pending'
 }
 
 function formatDate(date: Date): string {
@@ -23,14 +55,24 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-async function AdminRequestsContent() {
+function statusBadgeVariant(
+  status: OrganizationRequestStatus,
+): 'default' | 'secondary' | 'destructive' {
+  if (status === 'approved') return 'default'
+  if (status === 'rejected') return 'destructive'
+  return 'secondary'
+}
+
+async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
   await io()
 
+  const params = await searchParams
+  const status = resolveStatus(params.status)
   const session = await requireSession()
 
   if (!(await isPlatformAdmin(session.userId))) notFound()
 
-  const data = await listPendingOrganizationRequests(session.userId)
+  const data = await listOrganizationRequests(session.userId, status)
 
   if (data.status !== 'ok') notFound()
 
@@ -47,18 +89,43 @@ async function AdminRequestsContent() {
           Solicitações de organizações
         </h1>
         <p className="text-sm text-muted-foreground">
-          Analise a ata de eleição e aprove ou rejeite a criação da organização.
+          {status === 'pending'
+            ? 'Analise a ata de eleição e aprove ou rejeite a criação da organização.'
+            : 'Consulte o histórico de solicitações já analisadas.'}
         </p>
       </header>
+
+      <nav aria-label="Filtrar solicitações" className="flex flex-wrap gap-2">
+        {statusTabs.map(tab => {
+          const active = tab.status === status
+
+          return (
+            <Link
+              key={tab.status}
+              href={tab.href}
+              aria-current={active ? 'page' : undefined}
+              className={
+                active
+                  ? 'rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+                  : 'rounded-full border px-3 py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
+              }
+            >
+              {statusLabels[tab.status]}
+            </Link>
+          )
+        })}
+      </nav>
 
       {data.requests.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-background p-6">
           <p className="text-sm text-muted-foreground">
-            Nenhuma solicitação pendente.
+            Nenhuma solicitação {statusLabels[status].toLowerCase()}.
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Novas solicitações de criação de organização aparecerão aqui.
-          </p>
+          {status === 'pending' ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Novas solicitações de criação de organização aparecerão aqui.
+            </p>
+          ) : null}
         </div>
       ) : (
         <ul className="space-y-4">
@@ -68,7 +135,12 @@ async function AdminRequestsContent() {
               className="space-y-4 rounded-lg border bg-background p-5"
             >
               <div className="space-y-1">
-                <h2 className="font-semibold">{request.legalName}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-semibold">{request.legalName}</h2>
+                  <Badge variant={statusBadgeVariant(request.status)}>
+                    {statusLabels[request.status]}
+                  </Badge>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   {request.acronym} · CNPJ {request.cnpj}
                 </p>
@@ -81,7 +153,21 @@ async function AdminRequestsContent() {
                   <time dateTime={request.createdAt.toISOString()}>
                     {formatDate(request.createdAt)}
                   </time>
+                  {request.reviewedAt ? (
+                    <>
+                      {' '}
+                      · Analisada em{' '}
+                      <time dateTime={request.reviewedAt.toISOString()}>
+                        {formatDate(request.reviewedAt)}
+                      </time>
+                    </>
+                  ) : null}
                 </p>
+                {request.status === 'rejected' && request.rejectionReason ? (
+                  <p className="text-sm text-muted-foreground">
+                    Motivo da rejeição: {request.rejectionReason}
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -94,7 +180,9 @@ async function AdminRequestsContent() {
                 </a>
               </div>
 
-              <ReviewRequestActions requestId={request.id} />
+              {request.status === 'pending' ? (
+                <ReviewRequestActions requestId={request.id} />
+              ) : null}
             </li>
           ))}
         </ul>
@@ -103,7 +191,9 @@ async function AdminRequestsContent() {
   )
 }
 
-export default function AdminRequestsPage() {
+export default function AdminRequestsPage({
+  searchParams,
+}: AdminRequestsPageProps) {
   return (
     <Suspense
       fallback={
@@ -112,7 +202,7 @@ export default function AdminRequestsPage() {
         </p>
       }
     >
-      <AdminRequestsContent />
+      <AdminRequestsContent searchParams={searchParams} />
     </Suspense>
   )
 }

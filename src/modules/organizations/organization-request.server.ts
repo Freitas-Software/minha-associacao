@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   memberships,
@@ -168,24 +168,29 @@ export async function listUserOrganizationRequests(
     .orderBy(desc(organizationRequests.createdAt))
 }
 
-export type PendingOrganizationRequest = {
+export type AdminOrganizationRequest = {
   id: string
   cnpj: string
   legalName: string
   acronym: string
+  status: OrganizationRequestStatus
   documentName: string
   documentType: string
   documentSize: number
   requesterName: string
   requesterEmail: string
+  organizationId: string | null
+  rejectionReason: string | null
+  reviewedAt: Date | null
   createdAt: Date
 }
 
-export async function listPendingOrganizationRequests(
+export async function listOrganizationRequests(
   adminUserId: string,
+  status: OrganizationRequestStatus,
   database: typeof db = db,
 ): Promise<
-  | { status: 'ok'; requests: PendingOrganizationRequest[] }
+  | { status: 'ok'; requests: AdminOrganizationRequest[] }
   | { status: 'forbidden' }
 > {
   if (!(await isPlatformAdmin(adminUserId, database))) {
@@ -198,19 +203,37 @@ export async function listPendingOrganizationRequests(
       cnpj: organizationRequests.cnpj,
       legalName: organizationRequests.legalName,
       acronym: organizationRequests.acronym,
+      status: organizationRequests.status,
       documentName: organizationRequests.documentName,
       documentType: organizationRequests.documentType,
       documentSize: organizationRequests.documentSize,
       requesterName: users.name,
       requesterEmail: users.email,
+      organizationId: organizationRequests.organizationId,
+      rejectionReason: organizationRequests.rejectionReason,
+      reviewedAt: organizationRequests.reviewedAt,
       createdAt: organizationRequests.createdAt,
     })
     .from(organizationRequests)
     .innerJoin(users, eq(users.id, organizationRequests.requesterUserId))
-    .where(eq(organizationRequests.status, 'pending'))
-    .orderBy(organizationRequests.createdAt)
+    .where(eq(organizationRequests.status, status))
+    .orderBy(
+      status === 'pending'
+        ? asc(organizationRequests.createdAt)
+        : desc(organizationRequests.createdAt),
+    )
 
   return { status: 'ok', requests }
+}
+
+export async function listPendingOrganizationRequests(
+  adminUserId: string,
+  database: typeof db = db,
+): Promise<
+  | { status: 'ok'; requests: AdminOrganizationRequest[] }
+  | { status: 'forbidden' }
+> {
+  return listOrganizationRequests(adminUserId, 'pending', database)
 }
 
 export type ApproveOrganizationRequestResult =
