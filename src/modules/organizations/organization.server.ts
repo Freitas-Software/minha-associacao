@@ -1191,3 +1191,56 @@ export async function listPendingPreRegistrations(
 
   return { status: 'ok', requests }
 }
+
+export type AdminOrganizationListItem = {
+  id: string
+  cnpj: string
+  legalName: string
+  acronym: string
+  status: 'provisioning' | 'active'
+  createdAt: Date
+  activatedAt: Date | null
+}
+
+export type ListAdminOrganizationsResult =
+  | { status: 'ok'; organizations: AdminOrganizationListItem[] }
+  | { status: 'forbidden' }
+
+export async function listAdminOrganizations(
+  adminUserId: string,
+  options: {
+    status?: 'provisioning' | 'active'
+    limit?: number
+    offset?: number
+  } = {},
+  database: typeof db = db,
+): Promise<ListAdminOrganizationsResult> {
+  if (!(await isPlatformAdmin(adminUserId, database))) {
+    return { status: 'forbidden' }
+  }
+
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const conditions = options.status
+    ? eq(organizations.status, options.status)
+    : undefined
+
+  const organizationsList = await database
+    .select({
+      id: organizations.id,
+      cnpj: organizations.cnpj,
+      legalName: organizations.legalName,
+      acronym: organizations.acronym,
+      status: organizations.status,
+      createdAt: organizations.createdAt,
+      activatedAt: organizations.activatedAt,
+    })
+    .from(organizations)
+    .where(conditions)
+    .orderBy(desc(organizations.createdAt))
+    .limit(limit)
+    .offset(offset)
+
+  return { status: 'ok', organizations: organizationsList }
+}

@@ -102,12 +102,20 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
   return (
     <main className="space-y-8">
       <header className="space-y-2">
-        <Link
-          href="/app/organizacoes"
-          className="text-sm text-muted-foreground underline underline-offset-4"
-        >
-          ← Aplicação
-        </Link>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link
+            href="/app/organizacoes"
+            className="text-muted-foreground underline underline-offset-4"
+          >
+            ← Aplicação
+          </Link>
+          <Link
+            href="/app/admin/organizacoes"
+            className="text-muted-foreground underline underline-offset-4"
+          >
+            Organizações
+          </Link>
+        </div>
         <h1 className="text-3xl font-semibold tracking-tight">
           Solicitações de organizações
         </h1>
