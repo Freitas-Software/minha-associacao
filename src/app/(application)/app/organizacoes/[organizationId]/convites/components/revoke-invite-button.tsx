@@ -1,8 +1,8 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button'
+import { FormMessage } from '@/components/ui/form-message'
 import { initialInviteActionState } from '@/modules/invites/invite-action-state'
 import { revokeInviteAction } from '../../../actions'
 
@@ -19,24 +19,24 @@ export function RevokeInviteButton({
   )
 
   return (
-    <form action={formAction} aria-busy={pending}>
+    <form action={formAction} aria-busy={pending} className="space-y-2">
       <input type="hidden" name="organizationId" value={organizationId} />
       <input type="hidden" name="inviteId" value={inviteId} />
-      <Button type="submit" variant="destructive" size="xs" disabled={pending}>
-        {pending ? (
-          <>
-            <Spinner data-icon="inline-start" />
-            Revogando…
-          </>
-        ) : (
-          'Revogar'
-        )}
-      </Button>
-      {state.status === 'error' ? (
-        <p role="alert" className="mt-1 text-xs text-destructive">
-          {state.message}
-        </p>
-      ) : null}
+
+      <ConfirmSubmitButton
+        label="Revogar"
+        confirmLabel="Confirmar revogação"
+        description="O link deixará de funcionar imediatamente. Esta ação não pode ser desfeita."
+        pending={pending}
+        pendingLabel="Revogando…"
+        variant="destructive"
+        size="sm"
+      />
+
+      <FormMessage
+        status={pending ? 'idle' : state.status === 'error' ? 'error' : 'idle'}
+        message={pending ? '' : state.message}
+      />
     </form>
   )
 }

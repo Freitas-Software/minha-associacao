@@ -1,9 +1,8 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button'
+import { FormMessage } from '@/components/ui/form-message'
 import { initialOrganizationActionState } from '@/modules/organizations/organization-action-state'
 import {
   approveOrganizationRequestAction,
@@ -22,35 +21,36 @@ export function ReviewRequestActions({ requestId }: { requestId: string }) {
 
   return (
     <div className="space-y-5">
-      <form action={approveAction} aria-busy={approving}>
+      <form action={approveAction} aria-busy={approving} className="space-y-3">
         <input type="hidden" name="requestId" value={requestId} />
-        <Button
-          type="submit"
-          disabled={approving || approveState.status === 'success'}
-        >
-          {approving ? (
-            <>
-              <Spinner data-icon="inline-start" />
-              Aprovando…
-            </>
-          ) : (
-            'Aprovar criação'
-          )}
-        </Button>
-        {approveState.status !== 'idle' ? (
-          <Alert
-            variant={
-              approveState.status === 'error' ? 'destructive' : 'default'
-            }
-            className="mt-3"
-          >
-            <AlertDescription>{approveState.message}</AlertDescription>
-          </Alert>
-        ) : null}
+
+        <ConfirmSubmitButton
+          label="Aprovar criação"
+          confirmLabel="Confirmar aprovação"
+          description="A solicitação será aprovada e a organização será criada com o solicitante como presidente ativo."
+          pending={approving}
+          pendingLabel="Aprovando…"
+          disabled={approveState.status === 'success'}
+        />
+
+        <FormMessage
+          status={approving ? 'idle' : approveState.status}
+          message={approving ? '' : approveState.message}
+          className="mt-3"
+        />
       </form>
 
-      <form action={rejectAction} aria-busy={rejecting} className="space-y-3">
+      <form
+        action={rejectAction}
+        aria-busy={rejecting}
+        className="space-y-3"
+        onSubmit={event => {
+          event.preventDefault()
+          rejectAction(new FormData(event.currentTarget))
+        }}
+      >
         <input type="hidden" name="requestId" value={requestId} />
+
         <label
           htmlFor={`reject-${requestId}`}
           className="block text-sm font-medium"
@@ -63,29 +63,31 @@ export function ReviewRequestActions({ requestId }: { requestId: string }) {
           rows={3}
           maxLength={500}
           required
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+          aria-describedby={`reject-${requestId}-description`}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring aria-invalid:border-destructive dark:bg-input/30"
         />
-        <Button
-          type="submit"
-          variant="destructive"
-          disabled={rejecting || rejectState.status === 'success'}
+        <p
+          id={`reject-${requestId}-description`}
+          className="text-sm text-muted-foreground"
         >
-          {rejecting ? (
-            <>
-              <Spinner data-icon="inline-start" />
-              Rejeitando…
-            </>
-          ) : (
-            'Rejeitar solicitação'
-          )}
-        </Button>
-        {rejectState.status !== 'idle' ? (
-          <Alert
-            variant={rejectState.status === 'error' ? 'destructive' : 'default'}
-          >
-            <AlertDescription>{rejectState.message}</AlertDescription>
-          </Alert>
-        ) : null}
+          Explique o motivo para que o solicitante entenda a decisão. Máximo de
+          500 caracteres.
+        </p>
+
+        <ConfirmSubmitButton
+          label="Rejeitar solicitação"
+          confirmLabel="Confirmar rejeição"
+          description="A solicitação será marcada como rejeitada e o solicitante verá o motivo informado."
+          pending={rejecting}
+          pendingLabel="Rejeitando…"
+          variant="destructive"
+          disabled={rejectState.status === 'success'}
+        />
+
+        <FormMessage
+          status={rejecting ? 'idle' : rejectState.status}
+          message={rejecting ? '' : rejectState.message}
+        />
       </form>
     </div>
   )

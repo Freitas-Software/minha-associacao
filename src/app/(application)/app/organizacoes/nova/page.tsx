@@ -15,7 +15,7 @@ async function NewOrganizationContent() {
   await requireSession()
 
   return (
-    <main className="mx-auto w-full max-w-2xl space-y-8 px-4 py-12">
+    <main className="mx-auto w-full max-w-2xl space-y-8">
       <header className="space-y-2">
         <Link
           href="/app/organizacoes"

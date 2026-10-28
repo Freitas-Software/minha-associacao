@@ -90,9 +90,15 @@ async function InviteManagementContent({ params }: InvitePageProps) {
         </h2>
 
         {data.invites.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhum convite emitido ainda.
-          </p>
+          <div className="rounded-lg border border-dashed bg-background p-6">
+            <p className="text-sm text-muted-foreground">
+              Nenhum convite emitido ainda.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use o formulário acima para criar um convite individual ou
+              compartilhado.
+            </p>
+          </div>
         ) : (
           <ul className="space-y-3">
             {data.invites.map(invite => {
@@ -123,8 +129,14 @@ async function InviteManagementContent({ params }: InvitePageProps) {
                         {invite.type === 'individual'
                           ? `CPF ${maskDocument(invite.documentNumber)}`
                           : 'Sem CPF vinculado'}{' '}
-                        · Expira em {formatDate(invite.expiresAt)} · Criado em{' '}
-                        {formatDate(invite.createdAt)}
+                        · Expira em{' '}
+                        <time dateTime={invite.expiresAt.toISOString()}>
+                          {formatDate(invite.expiresAt)}
+                        </time>{' '}
+                        · Criado em{' '}
+                        <time dateTime={invite.createdAt.toISOString()}>
+                          {formatDate(invite.createdAt)}
+                        </time>
                       </p>
                     </div>
 

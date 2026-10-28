@@ -50,9 +50,21 @@ async function RequestsContent() {
       </header>
 
       {requests.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nenhuma solicitação enviada ainda.
-        </p>
+        <div className="rounded-lg border border-dashed bg-background p-6">
+          <p className="text-sm text-muted-foreground">
+            Nenhuma solicitação enviada ainda.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Solicite a criação de uma organização para acompanhar a análise
+            aqui.
+          </p>
+          <Link
+            href="/app/organizacoes/nova"
+            className="mt-3 inline-block text-sm underline underline-offset-4"
+          >
+            Solicitar nova organização
+          </Link>
+        </div>
       ) : (
         <ul className="space-y-3">
           {requests.map(request => {

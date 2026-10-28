@@ -5,7 +5,10 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
-import { PERMISSIONS } from '@/modules/authorization/permissions'
+import {
+  PERMISSION_CATALOG,
+  PERMISSIONS,
+} from '@/modules/authorization/permissions'
 import {
   getOrganizationSummary,
   listRoles,
@@ -19,6 +22,18 @@ export const metadata: Metadata = {
 
 type RolesPageProps = {
   params: Promise<{ organizationId: string }>
+}
+
+function describePermissions(codes: readonly string[]): string {
+  if (codes.length === 0) return 'Nenhuma permissão explícita.'
+
+  return codes
+    .map(
+      code =>
+        PERMISSION_CATALOG.find(permission => permission.code === code)
+          ?.description ?? code,
+    )
+    .join(' · ')
 }
 
 async function RolesContent({ params }: RolesPageProps) {
@@ -64,9 +79,16 @@ async function RolesContent({ params }: RolesPageProps) {
         <h2 className="text-xl font-semibold tracking-tight">Cargos</h2>
 
         {rolesData.roles.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhum cargo criado ainda.
-          </p>
+          <div className="rounded-lg border border-dashed bg-background p-6">
+            <p className="text-sm text-muted-foreground">
+              Nenhum cargo criado ainda.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {canManage
+                ? 'Use o formulário acima para criar o primeiro cargo.'
+                : 'Peça a alguém com acesso completo para configurar os cargos.'}
+            </p>
+          </div>
         ) : (
           <ul className="space-y-3">
             {rolesData.roles.map(role => (
@@ -85,12 +107,10 @@ async function RolesContent({ params }: RolesPageProps) {
                   ) : null}
                 </div>
 
-                <p className="mt-2 text-xs text-muted-foreground">
+                <p className="mt-2 text-xs break-words text-muted-foreground">
                   {role.hasFullAccess
-                    ? 'Todas as permissões configuráveis.'
-                    : role.permissionCodes.length > 0
-                      ? role.permissionCodes.join(', ')
-                      : 'Nenhuma permissão explícita.'}
+                    ? 'Todas as permissões configuráveis atuais e futuras.'
+                    : describePermissions(role.permissionCodes)}
                 </p>
               </li>
             ))}

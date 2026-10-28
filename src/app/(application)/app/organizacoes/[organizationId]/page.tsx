@@ -3,6 +3,7 @@ import { io } from 'next/cache'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
 import { getOrganizationSummary } from '@/modules/organizations/organization.server'
@@ -49,11 +50,15 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
           <h1 className="text-3xl font-semibold tracking-tight">
             {summary.organization.legalName}
           </h1>
-          <span className="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+          <Badge
+            variant={
+              summary.organization.status === 'active' ? 'default' : 'secondary'
+            }
+          >
             {summary.organization.status === 'active'
               ? 'Ativa'
               : 'Em configuração'}
-          </span>
+          </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
           {summary.organization.acronym}

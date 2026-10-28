@@ -2,8 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { FormMessage } from '@/components/ui/form-message'
 import { Spinner } from '@/components/ui/spinner'
 import { endOtherSessions } from '../session-actions'
 
@@ -65,14 +65,19 @@ export function EndOtherSessionsButton() {
         )}
       </Button>
 
-      {state ? (
-        <Alert
-          variant={state.success ? 'default' : 'destructive'}
-          className="mt-3"
-        >
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      ) : null}
+      <FormMessage
+        status={
+          isPending
+            ? 'idle'
+            : state
+              ? state.success
+                ? 'success'
+                : 'error'
+              : 'idle'
+        }
+        message={isPending ? '' : (state?.message ?? '')}
+        className="mt-3"
+      />
     </form>
   )
 }

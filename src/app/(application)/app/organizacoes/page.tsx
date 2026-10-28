@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { io } from 'next/cache'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { requireSession } from '@/lib/session'
 import { isPlatformAdmin } from '@/modules/authorization/authorize.server'
 import { listUserOrganizations } from '@/modules/organizations/organization.server'
@@ -53,9 +54,20 @@ async function OrganizationsContent() {
       </header>
 
       {organizations.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Você ainda não participa de nenhuma organização.
-        </p>
+        <div className="rounded-lg border border-dashed bg-background p-6">
+          <p className="text-sm text-muted-foreground">
+            Você ainda não participa de nenhuma organização.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Se você recebeu um convite, abra o link enviado pela organização.
+          </p>
+          <Link
+            href="/app/organizacoes/nova"
+            className="mt-3 inline-block text-sm underline underline-offset-4"
+          >
+            Solicitar criação de organização
+          </Link>
+        </div>
       ) : (
         <ul className="grid gap-4 md:grid-cols-2">
           {organizations.map(organization => (
@@ -70,11 +82,15 @@ async function OrganizationsContent() {
                     {organization.acronym} · {organization.roleName}
                   </p>
                 </div>
-                <span className="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+                <Badge
+                  variant={
+                    organization.status === 'active' ? 'default' : 'secondary'
+                  }
+                >
                   {organization.status === 'active'
                     ? 'Ativa'
                     : 'Em configuração'}
-                </span>
+                </Badge>
               </div>
 
               <Link

@@ -9,7 +9,7 @@ type FooterLink = { label: string; href: string }
 type SiteFooterProps = { legalLinks?: readonly FooterLink[] }
 
 const linkClass =
-  'rounded-sm text-muted-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none'
+  'inline-block rounded-sm py-0.5 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none'
 
 async function CopyrightYear() {
   'use cache'

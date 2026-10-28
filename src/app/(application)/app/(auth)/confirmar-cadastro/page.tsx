@@ -49,7 +49,7 @@ export default function ConfirmationPage({
   searchParams,
 }: ConfirmationPageProps) {
   return (
-    <main className="mx-auto w-full max-w-lg px-4 py-12">
+    <main className="mx-auto w-full max-w-lg">
       <header className="mb-8 space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight">
           Confirme seu cadastro

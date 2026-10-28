@@ -2,8 +2,7 @@
 
 import { useForm } from '@tanstack/react-form'
 import Link from 'next/link'
-import { useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -13,16 +12,21 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { FormMessage } from '@/components/ui/form-message'
+import { FormattedInput } from '@/components/ui/formatted-input'
 import { Spinner } from '@/components/ui/spinner'
+import { focusFirstInvalidField } from '@/lib/focus'
+import { formatCpf } from '@/lib/formatters'
 import { requestPasswordResetSchema } from '../../schema'
 import { requestPasswordReset } from '../actions'
 
-type Feedback =
-  | { variant: 'default'; message: string }
-  | { variant: 'destructive'; message: string }
+type Feedback = {
+  status: 'error' | 'success'
+  message: string
+}
 
 export function RequestPasswordResetForm() {
+  const formRef = useRef<HTMLFormElement>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
 
   const form = useForm({
@@ -32,6 +36,7 @@ export function RequestPasswordResetForm() {
     validators: {
       onSubmit: requestPasswordResetSchema,
     },
+    onSubmitInvalid: () => focusFirstInvalidField(formRef.current),
     onSubmit: async ({ value }) => {
       setFeedback(null)
 
@@ -39,18 +44,18 @@ export function RequestPasswordResetForm() {
         const result = await requestPasswordReset(value)
 
         if (!result.success) {
-          setFeedback({ variant: 'destructive', message: result.message })
+          setFeedback({ status: 'error', message: result.message })
           return
         }
 
         setFeedback({
-          variant: 'default',
+          status: 'success',
           message:
             'Se houver uma conta com esse CPF, enviaremos as instruções para o email cadastrado. Confira também o spam. Aguarde pelo menos 60 segundos antes de pedir outro link.',
         })
       } catch {
         setFeedback({
-          variant: 'destructive',
+          status: 'error',
           message:
             'Não foi possível confirmar a solicitação. Tente novamente em instantes.',
         })
@@ -63,12 +68,13 @@ export function RequestPasswordResetForm() {
       <form.Subscribe selector={state => state.isSubmitting}>
         {isSubmitting => (
           <form
+            ref={formRef}
             noValidate
             aria-busy={isSubmitting}
             onSubmit={event => {
               event.preventDefault()
               event.stopPropagation()
-              form.handleSubmit()
+              void form.handleSubmit()
             }}
           >
             <FieldSet>
@@ -91,19 +97,19 @@ export function RequestPasswordResetForm() {
                       <Field data-invalid={invalid}>
                         <FieldLabel htmlFor="reset-cpf">CPF</FieldLabel>
 
-                        <Input
+                        <FormattedInput
                           id="reset-cpf"
                           name={field.name}
-                          type="text"
-                          autoComplete="username"
-                          inputMode="numeric"
+                          format={formatCpf}
+                          maxDigits={11}
                           maxLength={14}
+                          autoComplete="username"
+                          placeholder="000.000.000-00"
+                          spellCheck={false}
                           required
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={event => {
-                            field.handleChange(event.currentTarget.value)
-                          }}
+                          onValueChange={field.handleChange}
                           aria-invalid={invalid}
                           aria-describedby={
                             invalid ? 'reset-cpf-error' : undefined
@@ -128,17 +134,19 @@ export function RequestPasswordResetForm() {
                 )}
               </Button>
 
-              {feedback ? (
-                <Alert variant={feedback.variant}>
-                  <AlertDescription>{feedback.message}</AlertDescription>
-                </Alert>
-              ) : null}
+              <FormMessage
+                status={feedback?.status ?? 'idle'}
+                message={feedback?.message ?? ''}
+              />
             </FieldSet>
           </form>
         )}
       </form.Subscribe>
 
-      <Link href="/app/entrar" className="text-sm underline underline-offset-4">
+      <Link
+        href="/app/entrar"
+        className="inline-block text-sm underline underline-offset-4"
+      >
         Voltar para entrar
       </Link>
     </div>

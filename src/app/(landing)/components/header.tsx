@@ -18,7 +18,7 @@ export function LandingHeader() {
               <li key={href}>
                 <Link
                   href={href}
-                  className="rounded-sm text-sm text-muted-foreground hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                  className="inline-block rounded-sm px-1 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
                 >
                   {label}
                 </Link>
@@ -31,7 +31,7 @@ export function LandingHeader() {
           <Button
             nativeButton={false}
             variant="outline"
-            className="rounded-full border-primary/40 px-5 shadow-none"
+            className="rounded-full border-primary px-5 shadow-none"
             render={<Link href="/app" />}
           >
             Acessar app

@@ -36,7 +36,7 @@ export function LandingHero() {
             <Button
               nativeButton={false}
               variant="outline"
-              className="h-12 rounded-xl border-primary/40 px-7 text-sm shadow-none"
+              className="h-12 rounded-xl border-primary px-7 text-sm shadow-none"
               render={<Link href="#recursos" />}
             >
               Conhecer os recursos

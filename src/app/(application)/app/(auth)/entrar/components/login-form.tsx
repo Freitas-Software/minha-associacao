@@ -2,8 +2,7 @@
 
 import { useForm } from '@tanstack/react-form'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -13,13 +12,18 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { FormMessage } from '@/components/ui/form-message'
+import { FormattedInput } from '@/components/ui/formatted-input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Spinner } from '@/components/ui/spinner'
+import { focusFirstInvalidField } from '@/lib/focus'
+import { formatCpf } from '@/lib/formatters'
 import { loginSchema } from '../../schema'
 import { login } from '../actions'
 
 export function LoginForm({ next = '/app' }: { next?: string }) {
   const router = useRouter()
+  const formRef = useRef<HTMLFormElement>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const form = useForm({
@@ -30,6 +34,7 @@ export function LoginForm({ next = '/app' }: { next?: string }) {
     validators: {
       onSubmit: loginSchema,
     },
+    onSubmitInvalid: () => focusFirstInvalidField(formRef.current),
     onSubmit: async ({ value }) => {
       setMessage(null)
 
@@ -52,12 +57,13 @@ export function LoginForm({ next = '/app' }: { next?: string }) {
     <form.Subscribe selector={state => state.isSubmitting}>
       {isSubmitting => (
         <form
+          ref={formRef}
           noValidate
           aria-busy={isSubmitting}
           onSubmit={event => {
             event.preventDefault()
             event.stopPropagation()
-            form.handleSubmit()
+            void form.handleSubmit()
           }}
         >
           <FieldSet>
@@ -76,19 +82,19 @@ export function LoginForm({ next = '/app' }: { next?: string }) {
                     <Field data-invalid={invalid}>
                       <FieldLabel htmlFor="login-cpf">CPF</FieldLabel>
 
-                      <Input
+                      <FormattedInput
                         id="login-cpf"
                         name={field.name}
-                        type="text"
+                        format={formatCpf}
+                        maxDigits={11}
+                        maxLength={14}
                         autoComplete="username"
                         placeholder="000.000.000-00"
-                        maxLength={14}
+                        spellCheck={false}
                         required
                         value={field.state.value}
                         onBlur={field.handleBlur}
-                        onChange={event => {
-                          field.handleChange(event.currentTarget.value)
-                        }}
+                        onValueChange={field.handleChange}
                         aria-invalid={invalid}
                         aria-describedby={
                           invalid ? 'login-cpf-error' : undefined
@@ -113,10 +119,9 @@ export function LoginForm({ next = '/app' }: { next?: string }) {
                     <Field data-invalid={invalid}>
                       <FieldLabel htmlFor="login-password">Senha</FieldLabel>
 
-                      <Input
+                      <PasswordInput
                         id="login-password"
                         name={field.name}
-                        type="password"
                         autoComplete="current-password"
                         maxLength={128}
                         required
@@ -149,11 +154,10 @@ export function LoginForm({ next = '/app' }: { next?: string }) {
               )}
             </Button>
 
-            {message ? (
-              <Alert variant="destructive">
-                <AlertDescription>{message}</AlertDescription>
-              </Alert>
-            ) : null}
+            <FormMessage
+              status={message ? 'error' : 'idle'}
+              message={message ?? ''}
+            />
           </FieldSet>
         </form>
       )}

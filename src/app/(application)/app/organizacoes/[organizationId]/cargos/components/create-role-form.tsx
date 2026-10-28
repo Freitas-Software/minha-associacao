@@ -1,7 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -11,6 +10,7 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
+import { FormMessage } from '@/components/ui/form-message'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { PERMISSION_CATALOG } from '@/modules/authorization/permissions'
@@ -18,14 +18,39 @@ import { initialOrganizationActionState } from '@/modules/organizations/organiza
 import { createRoleAction } from '../../../actions'
 
 export function CreateRoleForm({ organizationId }: { organizationId: string }) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [state, formAction, pending] = useActionState(
     createRoleAction,
     initialOrganizationActionState,
   )
+  const [isDirector, setIsDirector] = useState(false)
   const [hasFullAccess, setHasFullAccess] = useState(false)
+  const [isDefault, setIsDefault] = useState(false)
+
+  useEffect(() => {
+    if (hasFullAccess || isDirector) setIsDefault(false)
+  }, [hasFullAccess, isDirector])
+
+  useEffect(() => {
+    if (state.status !== 'success') return
+
+    formRef.current?.reset()
+    setIsDirector(false)
+    setHasFullAccess(false)
+    setIsDefault(false)
+  }, [state.status])
 
   return (
-    <form action={formAction} aria-busy={pending} className="space-y-6">
+    <form
+      ref={formRef}
+      action={formAction}
+      aria-busy={pending}
+      className="space-y-6"
+      onSubmit={event => {
+        event.preventDefault()
+        formAction(new FormData(event.currentTarget))
+      }}
+    >
       <input type="hidden" name="organizationId" value={organizationId} />
 
       <FieldSet>
@@ -45,11 +70,17 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
           </Field>
 
           <FieldGroup>
-            <label className="flex items-start gap-3 text-sm">
+            <label
+              htmlFor="role-director"
+              className="flex cursor-pointer items-start gap-3 text-sm"
+            >
               <input
+                id="role-director"
                 type="checkbox"
                 name="isDirector"
-                className="mt-1 size-4 rounded border-input accent-primary"
+                checked={isDirector}
+                onChange={event => setIsDirector(event.currentTarget.checked)}
+                className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
               <span>
                 Cargo de diretoria
@@ -59,15 +90,19 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
               </span>
             </label>
 
-            <label className="flex items-start gap-3 text-sm">
+            <label
+              htmlFor="role-full-access"
+              className="flex cursor-pointer items-start gap-3 text-sm"
+            >
               <input
+                id="role-full-access"
                 type="checkbox"
                 name="hasFullAccess"
                 checked={hasFullAccess}
                 onChange={event =>
                   setHasFullAccess(event.currentTarget.checked)
                 }
-                className="mt-1 size-4 rounded border-input accent-primary"
+                className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               />
               <span>
                 Acesso completo
@@ -77,11 +112,18 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
               </span>
             </label>
 
-            <label className="flex items-start gap-3 text-sm">
+            <label
+              htmlFor="role-default"
+              className="flex cursor-pointer items-start gap-3 text-sm"
+            >
               <input
+                id="role-default"
                 type="checkbox"
                 name="isDefault"
-                className="mt-1 size-4 rounded border-input accent-primary"
+                checked={isDefault}
+                disabled={isDirector || hasFullAccess}
+                onChange={event => setIsDefault(event.currentTarget.checked)}
+                className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
               />
               <span>
                 Cargo padrão de ingresso
@@ -93,7 +135,7 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
             </label>
           </FieldGroup>
 
-          <FieldSet>
+          <FieldSet disabled={hasFullAccess}>
             <FieldLegend variant="label">Permissões</FieldLegend>
             <FieldDescription>
               {hasFullAccess
@@ -105,21 +147,17 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
               {PERMISSION_CATALOG.map(permission => (
                 <label
                   key={permission.code}
-                  className="flex items-start gap-2 rounded-md border p-3 text-sm"
+                  htmlFor={`permission-${permission.code}`}
+                  className="flex cursor-pointer items-start gap-2 rounded-md border p-3 text-sm transition-colors hover:bg-muted/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 motion-reduce:transition-none"
                 >
                   <input
+                    id={`permission-${permission.code}`}
                     type="checkbox"
                     name="permissionCodes"
                     value={permission.code}
-                    disabled={hasFullAccess}
-                    className="mt-0.5 size-4 rounded border-input accent-primary"
+                    className="mt-0.5 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   />
-                  <span>
-                    {permission.description}
-                    <span className="block text-xs text-muted-foreground">
-                      {permission.code}
-                    </span>
-                  </span>
+                  <span>{permission.description}</span>
                 </label>
               ))}
             </div>
@@ -137,11 +175,11 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
           )}
         </Button>
 
-        {state.status !== 'idle' ? (
-          <Alert variant={state.status === 'error' ? 'destructive' : 'default'}>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        ) : null}
+        <FormMessage
+          status={pending ? 'idle' : state.status}
+          message={pending ? '' : state.message}
+          className="mt-4"
+        />
       </FieldSet>
     </form>
   )

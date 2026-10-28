@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useActionState, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -12,8 +11,11 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
+import { FormMessage } from '@/components/ui/form-message'
+import { FormattedInput } from '@/components/ui/formatted-input'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { formatCnpj } from '@/lib/formatters'
 import { initialOrganizationActionState } from '@/modules/organizations/organization-action-state'
 import {
   ORGANIZATION_REQUEST_DOCUMENT_TYPES,
@@ -42,7 +44,12 @@ export function RequestOrganizationForm() {
     requestOrganizationAction,
     initialOrganizationActionState,
   )
+  const [cnpj, setCnpj] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
+
+  const documentDescription = fileError
+    ? 'organization-document-description organization-document-error'
+    : 'organization-document-description'
 
   return (
     <form
@@ -51,25 +58,38 @@ export function RequestOrganizationForm() {
       encType="multipart/form-data"
       className="space-y-6"
       onSubmit={event => {
-        if (fileError) event.preventDefault()
+        event.preventDefault()
+
+        if (fileError) return
+
+        formAction(new FormData(event.currentTarget))
       }}
     >
       <FieldSet>
         <FieldLegend>Dados da associação</FieldLegend>
 
+        <p className="text-sm text-muted-foreground">
+          Todos os campos são obrigatórios.
+        </p>
+
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="organization-cnpj">CNPJ</FieldLabel>
-            <Input
+            <FormattedInput
               id="organization-cnpj"
               name="cnpj"
-              type="text"
-              inputMode="numeric"
+              format={formatCnpj}
+              maxDigits={14}
               maxLength={18}
+              autoComplete="off"
               placeholder="00.000.000/0000-00"
+              spellCheck={false}
               required
+              value={cnpj}
+              onValueChange={setCnpj}
+              aria-describedby="organization-cnpj-description"
             />
-            <FieldDescription>
+            <FieldDescription id="organization-cnpj-description">
               A razão social será obtida na consulta à BrasilAPI.
             </FieldDescription>
           </Field>
@@ -83,6 +103,7 @@ export function RequestOrganizationForm() {
               maxLength={32}
               required
               placeholder="Ex.: AMA"
+              autoComplete="off"
             />
           </Field>
 
@@ -97,15 +118,13 @@ export function RequestOrganizationForm() {
               accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
               required
               aria-invalid={Boolean(fileError)}
-              aria-describedby={
-                fileError ? 'organization-document-error' : undefined
-              }
+              aria-describedby={documentDescription}
               onChange={event => {
                 const file = event.currentTarget.files?.[0]
                 setFileError(file ? validateDocument(file) : null)
               }}
             />
-            <FieldDescription>
+            <FieldDescription id="organization-document-description">
               PDF, JPEG ou PNG com até 3 MB. O administrador da plataforma
               analisará a ata antes de criar a organização.
             </FieldDescription>
@@ -135,11 +154,11 @@ export function RequestOrganizationForm() {
           )}
         </Button>
 
-        {state.status !== 'idle' ? (
-          <Alert variant={state.status === 'error' ? 'destructive' : 'default'}>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        ) : null}
+        <FormMessage
+          status={pending ? 'idle' : state.status}
+          message={pending ? '' : state.message}
+          className="mt-4"
+        />
 
         {state.status === 'success' ? (
           <p className="text-sm">

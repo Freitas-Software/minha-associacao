@@ -32,7 +32,7 @@ export function LandingCallToAction() {
             <Button
               nativeButton={false}
               variant="outline"
-              className="h-12 rounded-xl border-primary/40 px-6 shadow-none"
+              className="h-12 rounded-xl border-primary px-6 shadow-none"
               render={<Link href="#como-funciona" />}
             >
               Saiba mais
