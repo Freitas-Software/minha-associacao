@@ -7,6 +7,9 @@ const responseSchema = z.object({
   razao_social: z.string().min(1).max(255),
 })
 
+// BrasilAPI blocks requests without a descriptive User-Agent.
+const BRAZIL_API_USER_AGENT = 'Associae/1.0'
+
 export type CnpjLookup = {
   cnpj: string
   legalName: string
@@ -21,6 +24,10 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookup> {
     response = await fetch(
       `https://brasilapi.com.br/api/cnpj/v1/${normalized}`,
       {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': BRAZIL_API_USER_AGENT,
+        },
         signal: AbortSignal.timeout(10_000),
         cache: 'no-store',
       },
