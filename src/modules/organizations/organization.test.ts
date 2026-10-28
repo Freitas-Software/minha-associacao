@@ -15,6 +15,8 @@ import {
   createOrganization,
   createRole,
   deactivateMembership,
+  listAssignableRoles,
+  updateMembershipRole,
   updateOrganization,
 } from './organization.server'
 
@@ -650,6 +652,129 @@ test('organization domain on PostgreSQL, using temporary tables', {
         )
       },
     )
+    await t.test('changes membership roles with guards', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const memberId = await createUser('member')
+      const organizationId = await createOrganizationRow(presidentId)
+      const presidentRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const associateRoleId = await createRoleRow(organizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+      const treasurerRoleId = await createRoleRow(organizationId, {
+        name: 'Tesoureiro',
+      })
+
+      await createMembershipRow(organizationId, presidentId, presidentRoleId)
+      const memberMembershipId = await createMembershipRow(
+        organizationId,
+        memberId,
+        associateRoleId,
+      )
+
+      const assignable = await listAssignableRoles(
+        presidentId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(assignable.status, 'ok')
+
+      if (assignable.status !== 'ok') throw new Error('Expected roles')
+
+      assert.deepEqual(
+        assignable.roles.map(role => role.name),
+        ['Associado', 'Presidente', 'Tesoureiro'],
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: presidentId,
+            membershipId: memberMembershipId,
+            roleId: treasurerRoleId,
+          },
+          database,
+        ),
+        { status: 'updated' },
+      )
+
+      const membership = await pool.query<{ role_id: string }>(
+        'SELECT role_id FROM pg_temp.memberships WHERE id = $1',
+        [memberMembershipId],
+      )
+
+      assert.equal(membership.rows[0].role_id, treasurerRoleId)
+
+      const audit = await pool.query<{ action: string }>(
+        "SELECT action FROM pg_temp.audit_events WHERE action = 'membership.role_changed'",
+      )
+
+      assert.equal(audit.rowCount, 1)
+
+      const managerRoleId = await createRoleRow(organizationId, {
+        name: 'Gestor',
+      })
+      const managerId = await createUser('manager')
+
+      await createMembershipRow(organizationId, managerId, managerRoleId)
+      await pool.query(
+        `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+         VALUES ($1, 'members.manage')`,
+        [managerRoleId],
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: managerId,
+            membershipId: memberMembershipId,
+            roleId: presidentRoleId,
+          },
+          database,
+        ),
+        { status: 'role-not-allowed' },
+      )
+
+      const presidentMembership = await pool.query<{ id: string }>(
+        'SELECT id FROM pg_temp.memberships WHERE user_id = $1',
+        [presidentId],
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: presidentId,
+            membershipId: presidentMembership.rows[0].id,
+            roleId: associateRoleId,
+          },
+          database,
+        ),
+        { status: 'last-full-access-member' },
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: memberId,
+            membershipId: presidentMembership.rows[0].id,
+            roleId: associateRoleId,
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listAssignableRoles(memberId, organizationId, database),
+        { status: 'forbidden' },
+      )
+    })
   } finally {
     await pool.end()
   }
