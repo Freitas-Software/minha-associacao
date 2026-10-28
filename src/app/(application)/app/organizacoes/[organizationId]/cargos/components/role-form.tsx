@@ -15,30 +15,51 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { PERMISSION_CATALOG } from '@/modules/authorization/permissions'
 import { initialOrganizationActionState } from '@/modules/organizations/organization-action-state'
-import { createRoleAction } from '../../../actions'
+import { createRoleAction, updateRoleAction } from '../../../actions'
 
-export function CreateRoleForm({ organizationId }: { organizationId: string }) {
+export type RoleFormRole = {
+  id: string
+  name: string
+  isDirector: boolean
+  hasFullAccess: boolean
+  isDefault: boolean
+  isActive: boolean
+  permissionCodes: string[]
+}
+
+type RoleFormProps = {
+  organizationId: string
+  mode: 'create' | 'edit'
+  role?: RoleFormRole
+}
+
+export function RoleForm({ organizationId, mode, role }: RoleFormProps) {
+  const editing = mode === 'edit' && role !== undefined
   const formRef = useRef<HTMLFormElement>(null)
   const [state, formAction, pending] = useActionState(
-    createRoleAction,
+    editing ? updateRoleAction : createRoleAction,
     initialOrganizationActionState,
   )
-  const [isDirector, setIsDirector] = useState(false)
-  const [hasFullAccess, setHasFullAccess] = useState(false)
-  const [isDefault, setIsDefault] = useState(false)
+  const [isDirector, setIsDirector] = useState(role?.isDirector ?? false)
+  const [hasFullAccess, setHasFullAccess] = useState(
+    role?.hasFullAccess ?? false,
+  )
+  const [isDefault, setIsDefault] = useState(role?.isDefault ?? false)
+  const [isActive, setIsActive] = useState(role?.isActive ?? true)
 
   useEffect(() => {
     if (hasFullAccess || isDirector) setIsDefault(false)
   }, [hasFullAccess, isDirector])
 
   useEffect(() => {
-    if (state.status !== 'success') return
+    if (editing || state.status !== 'success') return
 
     formRef.current?.reset()
     setIsDirector(false)
     setHasFullAccess(false)
     setIsDefault(false)
-  }, [state.status])
+    setIsActive(true)
+  }, [editing, state.status])
 
   return (
     <form
@@ -52,9 +73,10 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
       }}
     >
       <input type="hidden" name="organizationId" value={organizationId} />
+      {editing ? <input type="hidden" name="roleId" value={role.id} /> : null}
 
       <FieldSet>
-        <FieldLegend>Novo cargo</FieldLegend>
+        <FieldLegend>{editing ? 'Editar cargo' : 'Novo cargo'}</FieldLegend>
 
         <FieldGroup>
           <Field>
@@ -65,6 +87,7 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
               type="text"
               maxLength={100}
               required
+              defaultValue={role?.name}
               placeholder="Ex.: Presidente, Tesoureiro, Associado"
             />
           </Field>
@@ -133,6 +156,28 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
                 </span>
               </span>
             </label>
+
+            {editing ? (
+              <label
+                htmlFor="role-active"
+                className="flex cursor-pointer items-start gap-3 text-sm"
+              >
+                <input
+                  id="role-active"
+                  type="checkbox"
+                  name="isActive"
+                  checked={isActive}
+                  onChange={event => setIsActive(event.currentTarget.checked)}
+                  className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                />
+                <span>
+                  Cargo ativo
+                  <span className="block text-xs text-muted-foreground">
+                    Desative apenas cargos sem vínculos ou convites em uso.
+                  </span>
+                </span>
+              </label>
+            ) : null}
           </FieldGroup>
 
           <FieldSet disabled={hasFullAccess}>
@@ -155,6 +200,9 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
                     type="checkbox"
                     name="permissionCodes"
                     value={permission.code}
+                    defaultChecked={role?.permissionCodes.includes(
+                      permission.code,
+                    )}
                     className="mt-0.5 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   />
                   <span>{permission.description}</span>
@@ -168,8 +216,10 @@ export function CreateRoleForm({ organizationId }: { organizationId: string }) {
           {pending ? (
             <>
               <Spinner data-icon="inline-start" />
-              Criando…
+              {editing ? 'Salvando…' : 'Criando…'}
             </>
+          ) : editing ? (
+            'Salvar alterações'
           ) : (
             'Criar cargo'
           )}

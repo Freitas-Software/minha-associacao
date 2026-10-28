@@ -27,29 +27,45 @@ export const createOrganizationSchema = z.object({
 export type CreateOrganizationInput = z.input<typeof createOrganizationSchema>
 export type CreateOrganizationData = z.output<typeof createOrganizationSchema>
 
-export const createRoleSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .min(2, { error: 'Informe um nome com pelo menos 2 caracteres.' })
-      .max(100, { error: 'O nome deve ter no máximo 100 caracteres.' }),
-    isDirector: z.boolean().default(false),
-    hasFullAccess: z.boolean().default(false),
-    isDefault: z.boolean().default(false),
-    permissionCodes: z.array(z.enum(PERMISSION_CODES)).default([]),
-  })
-  .refine(
-    value => !(value.isDefault && (value.isDirector || value.hasFullAccess)),
-    {
-      error:
-        'O cargo padrão de ingresso não pode ser de diretoria nem de acesso completo.',
-      path: ['isDefault'],
-    },
-  )
+const roleFields = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, { error: 'Informe um nome com pelo menos 2 caracteres.' })
+    .max(100, { error: 'O nome deve ter no máximo 100 caracteres.' }),
+  isDirector: z.boolean().default(false),
+  hasFullAccess: z.boolean().default(false),
+  isDefault: z.boolean().default(false),
+  permissionCodes: z.array(z.enum(PERMISSION_CODES)).default([]),
+})
+
+function roleRefinement(value: {
+  isDefault: boolean
+  isDirector: boolean
+  hasFullAccess: boolean
+}): boolean {
+  return !(value.isDefault && (value.isDirector || value.hasFullAccess))
+}
+
+const defaultRoleRefinementOptions = {
+  error:
+    'O cargo padrão de ingresso não pode ser de diretoria nem de acesso completo.',
+  path: ['isDefault'],
+}
+
+export const createRoleSchema = roleFields.refine(
+  roleRefinement,
+  defaultRoleRefinementOptions,
+)
+
+export const updateRoleSchema = roleFields
+  .extend({ isActive: z.boolean().default(true) })
+  .refine(roleRefinement, defaultRoleRefinementOptions)
 
 export type CreateRoleInput = z.input<typeof createRoleSchema>
 export type CreateRoleData = z.output<typeof createRoleSchema>
+export type UpdateRoleInput = z.input<typeof updateRoleSchema>
+export type UpdateRoleData = z.output<typeof updateRoleSchema>
 
 export const deactivateMembershipSchema = z.object({
   reason: z
