@@ -18,7 +18,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { loginSchema } from '../../schema'
 import { login } from '../actions'
 
-export function LoginForm() {
+export function LoginForm({ next = '/app' }: { next?: string }) {
   const router = useRouter()
   const [message, setMessage] = useState<string | null>(null)
 
@@ -37,7 +37,7 @@ export function LoginForm() {
         const result = await login(value)
 
         if (result.success) {
-          router.replace('/app')
+          router.replace(next)
           return
         }
 
