@@ -2,6 +2,7 @@ import 'server-only'
 import { and, isNotNull, lt, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
+  emailChangeRequests,
   loginRateLimits,
   passwordResetRequests,
   registrationRequests,
@@ -16,6 +17,7 @@ export type CleanupResult = {
   sessions: number
   registrationRequests: number
   passwordResetRequests: number
+  emailChangeRequests: number
   loginRateLimits: number
 }
 
@@ -51,6 +53,11 @@ export async function runCleanup(
       .where(lt(passwordResetRequests.createdAt, cutoff))
       .returning({ id: passwordResetRequests.id })
 
+    const deletedEmailChangeRequests = await tx
+      .delete(emailChangeRequests)
+      .where(lt(emailChangeRequests.createdAt, cutoff))
+      .returning({ id: emailChangeRequests.id })
+
     const deletedLoginRateLimits = await tx
       .delete(loginRateLimits)
       .where(lt(loginRateLimits.expiresAt, cutoff))
@@ -60,6 +67,7 @@ export async function runCleanup(
       sessions: deletedSessions.length,
       registrationRequests: deletedRegistrationRequests.length,
       passwordResetRequests: deletedPasswordResetRequests.length,
+      emailChangeRequests: deletedEmailChangeRequests.length,
       loginRateLimits: deletedLoginRateLimits.length,
     }
   })
