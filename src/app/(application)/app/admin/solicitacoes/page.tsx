@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { requireSession } from '@/lib/session'
 import { isPlatformAdmin } from '@/modules/authorization/authorize.server'
 import {
@@ -20,6 +22,7 @@ export const metadata: Metadata = {
 type AdminRequestsPageProps = {
   searchParams: Promise<{
     status?: string | string[]
+    q?: string | string[]
     page?: string | string[]
   }>
 }
@@ -44,21 +47,30 @@ function resolveStatus(
   return 'pending'
 }
 
+function resolveQuery(value: string | string[] | undefined): string {
+  return typeof value === 'string' ? value.trim().slice(0, 100) : ''
+}
+
 function resolvePage(value: string | string[] | undefined): number {
   const parsed = Number(value)
 
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
-function pageHref(status: OrganizationRequestStatus, page: number): string {
+function pageHref(
+  status: OrganizationRequestStatus,
+  query: string,
+  page: number,
+): string {
   const params = new URLSearchParams()
 
   if (status !== 'pending') params.set('status', status)
+  if (query) params.set('q', query)
   if (page > 1) params.set('page', String(page))
 
-  const query = params.toString()
+  const search = params.toString()
 
-  return `/app/admin/solicitacoes${query ? `?${query}` : ''}`
+  return `/app/admin/solicitacoes${search ? `?${search}` : ''}`
 }
 
 function formatDate(date: Date): string {
@@ -84,12 +96,14 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
 
   const params = await searchParams
   const status = resolveStatus(params.status)
+  const query = resolveQuery(params.q)
   const page = resolvePage(params.page)
   const session = await requireSession()
 
   if (!(await isPlatformAdmin(session.userId))) notFound()
 
   const data = await listOrganizationRequests(session.userId, status, {
+    query: query || undefined,
     limit: pageSize + 1,
     offset: (page - 1) * pageSize,
   })
@@ -126,6 +140,26 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
         </p>
       </header>
 
+      <form method="get" className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="status" value={status} />
+        <div className="min-w-0 flex-1 space-y-1">
+          <label htmlFor="request-search" className="block text-sm font-medium">
+            Buscar solicitação
+          </label>
+          <Input
+            id="request-search"
+            name="q"
+            type="search"
+            defaultValue={query}
+            maxLength={100}
+            placeholder="Nome, sigla, CNPJ ou solicitante"
+          />
+        </div>
+        <Button type="submit" variant="outline">
+          Buscar
+        </Button>
+      </form>
+
       <nav aria-label="Filtrar solicitações" className="flex flex-wrap gap-2">
         {statusTabs.map(tab => {
           const active = tab === status
@@ -133,7 +167,7 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
           return (
             <Link
               key={tab}
-              href={pageHref(tab, 1)}
+              href={pageHref(tab, query, 1)}
               aria-current={active ? 'page' : undefined}
               className={
                 active
@@ -226,7 +260,7 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
         >
           {page > 1 ? (
             <Link
-              href={pageHref(status, page - 1)}
+              href={pageHref(status, query, page - 1)}
               className="text-sm underline underline-offset-4"
             >
               ← Anterior
@@ -234,7 +268,7 @@ async function AdminRequestsContent({ searchParams }: AdminRequestsPageProps) {
           ) : null}
           {hasNext ? (
             <Link
-              href={pageHref(status, page + 1)}
+              href={pageHref(status, query, page + 1)}
               className="text-sm underline underline-offset-4"
             >
               Próxima →
