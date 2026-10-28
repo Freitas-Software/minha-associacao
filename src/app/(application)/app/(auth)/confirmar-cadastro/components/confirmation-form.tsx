@@ -2,9 +2,8 @@
 
 import { useForm } from '@tanstack/react-form'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import z from 'zod'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -15,8 +14,10 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { FormMessage } from '@/components/ui/form-message'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Spinner } from '@/components/ui/spinner'
+import { focusFirstInvalidField } from '@/lib/focus'
 import {
   completeRegistrationSchema,
   passwordSchema,
@@ -35,6 +36,7 @@ const confirmationFormSchema = z
   })
 
 export function ConfirmationForm({ token }: { token: string }) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [completed, setCompleted] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -47,6 +49,7 @@ export function ConfirmationForm({ token }: { token: string }) {
     validators: {
       onSubmit: confirmationFormSchema,
     },
+    onSubmitInvalid: () => focusFirstInvalidField(formRef.current),
     onSubmit: async ({ value }) => {
       setMessage(null)
 
@@ -72,20 +75,17 @@ export function ConfirmationForm({ token }: { token: string }) {
 
   if (completed) {
     return (
-      <div role="status" className="space-y-3">
+      <div className="space-y-3">
         <h2 className="text-xl font-semibold">Conta criada</h2>
 
-        <p className="text-sm text-muted-foreground">
-          Seu email foi confirmado e sua senha foi definida.
-        </p>
-
-        <p className="text-sm text-muted-foreground">
-          Você ainda não está conectado.
+        <p role="status" className="text-sm text-muted-foreground">
+          Seu email foi confirmado e sua senha foi definida. Você ainda não está
+          conectado.
         </p>
 
         <Link
           href="/app/entrar"
-          className="text-sm underline underline-offset-4"
+          className="inline-block text-sm underline underline-offset-4"
         >
           Entrar na conta
         </Link>
@@ -97,12 +97,13 @@ export function ConfirmationForm({ token }: { token: string }) {
     <form.Subscribe selector={state => state.isSubmitting}>
       {isSubmitting => (
         <form
+          ref={formRef}
           noValidate
           aria-busy={isSubmitting}
           onSubmit={event => {
             event.preventDefault()
             event.stopPropagation()
-            form.handleSubmit()
+            void form.handleSubmit()
           }}
         >
           <FieldSet>
@@ -123,10 +124,9 @@ export function ConfirmationForm({ token }: { token: string }) {
                     <Field data-invalid={invalid}>
                       <FieldLabel htmlFor="password">Senha</FieldLabel>
 
-                      <Input
+                      <PasswordInput
                         id="password"
                         name={field.name}
-                        type="password"
                         autoComplete="new-password"
                         minLength={15}
                         maxLength={128}
@@ -162,10 +162,9 @@ export function ConfirmationForm({ token }: { token: string }) {
                         Confirme a senha
                       </FieldLabel>
 
-                      <Input
+                      <PasswordInput
                         id="password-confirmation"
                         name={field.name}
-                        type="password"
                         autoComplete="new-password"
                         minLength={15}
                         maxLength={128}
@@ -202,11 +201,17 @@ export function ConfirmationForm({ token }: { token: string }) {
               )}
             </Button>
 
-            {message ? (
-              <Alert variant="destructive">
-                <AlertDescription>{message}</AlertDescription>
-              </Alert>
-            ) : null}
+            <FormMessage
+              status={message ? 'error' : 'idle'}
+              message={message ?? ''}
+            />
+
+            <Link
+              href="/app/cadastro"
+              className="inline-block text-sm underline underline-offset-4"
+            >
+              Solicitar um novo link de cadastro
+            </Link>
           </FieldSet>
         </form>
       )}

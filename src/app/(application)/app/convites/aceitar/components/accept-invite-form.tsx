@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useActionState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { FormMessage } from '@/components/ui/form-message'
 import { Spinner } from '@/components/ui/spinner'
 import { initialInviteActionState } from '@/modules/invites/invite-action-state'
 import { acceptInviteAction } from '../../../organizacoes/actions'
@@ -29,11 +29,11 @@ export function AcceptInviteForm({ token }: { token: string }) {
         )}
       </Button>
 
-      {state.status !== 'idle' ? (
-        <Alert variant={state.status === 'error' ? 'destructive' : 'default'}>
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      ) : null}
+      <FormMessage
+        status={pending ? 'idle' : state.status}
+        message={pending ? '' : state.message}
+        className="mt-3"
+      />
 
       {state.status === 'success' ? (
         <p className="text-sm">

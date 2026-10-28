@@ -2,9 +2,8 @@
 
 import { useForm } from '@tanstack/react-form'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import z from 'zod'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -15,8 +14,10 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { FormMessage } from '@/components/ui/form-message'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Spinner } from '@/components/ui/spinner'
+import { focusFirstInvalidField } from '@/lib/focus'
 import { passwordSchema } from '@/modules/identity/registration.schema'
 import { resetPassword } from '../actions'
 
@@ -35,6 +36,7 @@ type ResetPasswordFormProps = {
 }
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [completed, setCompleted] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -46,6 +48,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     validators: {
       onSubmit: resetPasswordFormSchema,
     },
+    onSubmitInvalid: () => focusFirstInvalidField(formRef.current),
     onSubmit: async ({ value }) => {
       setMessage(null)
 
@@ -71,20 +74,17 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
 
   if (completed) {
     return (
-      <div role="status" className="space-y-3">
+      <div className="space-y-3">
         <h2 className="text-xl font-semibold">Senha atualizada</h2>
 
-        <p className="text-sm text-muted-foreground">
+        <p role="status" className="text-sm text-muted-foreground">
           Sua nova senha foi definida e as sessões anteriores foram encerradas.
-        </p>
-
-        <p className="text-sm text-muted-foreground">
           Entre novamente para acessar sua conta.
         </p>
 
         <Link
           href="/app/entrar"
-          className="text-sm underline underline-offset-4"
+          className="inline-block text-sm underline underline-offset-4"
         >
           Entrar na conta
         </Link>
@@ -96,12 +96,13 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     <form.Subscribe selector={state => state.isSubmitting}>
       {isSubmitting => (
         <form
+          ref={formRef}
           noValidate
           aria-busy={isSubmitting}
           onSubmit={event => {
             event.preventDefault()
             event.stopPropagation()
-            form.handleSubmit()
+            void form.handleSubmit()
           }}
         >
           <FieldSet>
@@ -120,10 +121,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                     <Field data-invalid={invalid}>
                       <FieldLabel htmlFor="password">Senha</FieldLabel>
 
-                      <Input
+                      <PasswordInput
                         id="password"
                         name={field.name}
-                        type="password"
                         autoComplete="new-password"
                         minLength={15}
                         maxLength={128}
@@ -159,10 +159,9 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                         Confirme a senha
                       </FieldLabel>
 
-                      <Input
+                      <PasswordInput
                         id="password-confirmation"
                         name={field.name}
-                        type="password"
                         autoComplete="new-password"
                         minLength={15}
                         maxLength={128}
@@ -199,19 +198,18 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               )}
             </Button>
 
-            {message ? (
-              <Alert variant="destructive">
-                <AlertDescription>{message}</AlertDescription>
-              </Alert>
-            ) : null}
-          </FieldSet>
+            <FormMessage
+              status={message ? 'error' : 'idle'}
+              message={message ?? ''}
+            />
 
-          <Link
-            href="/app/recuperar-senha"
-            className="mt-6 inline-block text-sm underline underline-offset-4"
-          >
-            Solicitar um novo link
-          </Link>
+            <Link
+              href="/app/recuperar-senha"
+              className="inline-block text-sm underline underline-offset-4"
+            >
+              Solicitar um novo link
+            </Link>
+          </FieldSet>
         </form>
       )}
     </form.Subscribe>

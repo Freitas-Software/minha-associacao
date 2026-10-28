@@ -1,3 +1,5 @@
+import { ChevronDownIcon } from 'lucide-react'
+
 const questions = [
   {
     title: 'Para quem é a Associae?',
@@ -26,8 +28,12 @@ export function LandingFaq() {
         <div className="divide-y rounded-2xl border px-5 sm:px-6">
           {questions.map(({ title, answer }) => (
             <details key={title} className="group py-5">
-              <summary className="cursor-pointer rounded-sm pr-3 font-medium focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-sm pr-1 font-medium focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
                 {title}
+                <ChevronDownIcon
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                />
               </summary>
               <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                 {answer}

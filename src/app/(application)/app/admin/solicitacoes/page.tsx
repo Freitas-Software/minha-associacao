@@ -18,6 +18,8 @@ function formatDate(date: Date): string {
 }
 
 function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`
+
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
@@ -50,9 +52,14 @@ async function AdminRequestsContent() {
       </header>
 
       {data.requests.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nenhuma solicitação pendente.
-        </p>
+        <div className="rounded-lg border border-dashed bg-background p-6">
+          <p className="text-sm text-muted-foreground">
+            Nenhuma solicitação pendente.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Novas solicitações de criação de organização aparecerão aqui.
+          </p>
+        </div>
       ) : (
         <ul className="space-y-4">
           {data.requests.map(request => (
@@ -65,19 +72,22 @@ async function AdminRequestsContent() {
                 <p className="text-sm text-muted-foreground">
                   {request.acronym} · CNPJ {request.cnpj}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm break-words text-muted-foreground">
                   Solicitante: {request.requesterName} ({request.requesterEmail}
                   )
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Enviada em {formatDate(request.createdAt)}
+                  Enviada em{' '}
+                  <time dateTime={request.createdAt.toISOString()}>
+                    {formatDate(request.createdAt)}
+                  </time>
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <a
                   href={`/app/admin/solicitacoes/${request.id}/documento`}
-                  className="underline underline-offset-4"
+                  className="break-all underline underline-offset-4"
                 >
                   Baixar ata ({request.documentName},{' '}
                   {formatSize(request.documentSize)})

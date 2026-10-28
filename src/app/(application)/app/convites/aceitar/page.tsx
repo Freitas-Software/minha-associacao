@@ -30,7 +30,7 @@ async function AcceptContent({ searchParams }: AcceptPageProps) {
 
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
     return (
-      <main className="mx-auto w-full max-w-lg px-4 py-12">
+      <main className="mx-auto w-full max-w-lg">
         <h1 className="text-2xl font-semibold tracking-tight">
           Convite inválido
         </h1>
@@ -51,7 +51,7 @@ async function AcceptContent({ searchParams }: AcceptPageProps) {
 
   if (!invite) {
     return (
-      <main className="mx-auto w-full max-w-lg px-4 py-12">
+      <main className="mx-auto w-full max-w-lg">
         <h1 className="text-2xl font-semibold tracking-tight">
           Convite indisponível
         </h1>
@@ -72,7 +72,7 @@ async function AcceptContent({ searchParams }: AcceptPageProps) {
   const loginHref = `/app/entrar?next=${encodeURIComponent(next)}`
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 py-12">
+    <main className="mx-auto w-full max-w-lg">
       <header className="mb-8 space-y-3">
         <p className="text-sm text-muted-foreground">Convite para</p>
         <h1 className="text-3xl font-semibold tracking-tight">
@@ -119,12 +119,20 @@ async function AcceptContent({ searchParams }: AcceptPageProps) {
               Entre na sua conta para aceitar o convite. Se você ainda não tem
               conta, crie uma e depois abra este link novamente.
             </p>
-            <Link
-              href={loginHref}
-              className="inline-block text-sm underline underline-offset-4"
-            >
-              Entrar para aceitar
-            </Link>
+            <div className="flex flex-wrap gap-4">
+              <Link
+                href={loginHref}
+                className="inline-block text-sm underline underline-offset-4"
+              >
+                Entrar para aceitar
+              </Link>
+              <Link
+                href="/app/cadastro"
+                className="inline-block text-sm underline underline-offset-4"
+              >
+                Criar conta
+              </Link>
+            </div>
           </div>
         )}
       </div>

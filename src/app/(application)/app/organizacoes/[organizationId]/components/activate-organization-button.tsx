@@ -1,9 +1,8 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button'
+import { FormMessage } from '@/components/ui/form-message'
 import { initialOrganizationActionState } from '@/modules/organizations/organization-action-state'
 import { activateOrganizationAction } from '../../actions'
 
@@ -20,22 +19,21 @@ export function ActivateOrganizationButton({
   return (
     <form action={formAction} aria-busy={pending} className="space-y-3">
       <input type="hidden" name="organizationId" value={organizationId} />
-      <Button type="submit" disabled={pending || state.status === 'success'}>
-        {pending ? (
-          <>
-            <Spinner data-icon="inline-start" />
-            Ativando…
-          </>
-        ) : (
-          'Ativar organização'
-        )}
-      </Button>
 
-      {state.status !== 'idle' ? (
-        <Alert variant={state.status === 'error' ? 'destructive' : 'default'}>
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      ) : null}
+      <ConfirmSubmitButton
+        label="Ativar organização"
+        confirmLabel="Confirmar ativação"
+        description="Ao ativar, o acesso temporário de configuração será encerrado e a organização passará a operar normalmente."
+        pending={pending}
+        pendingLabel="Ativando…"
+        disabled={state.status === 'success'}
+      />
+
+      <FormMessage
+        status={pending ? 'idle' : state.status}
+        message={pending ? '' : state.message}
+        className="mt-3"
+      />
     </form>
   )
 }

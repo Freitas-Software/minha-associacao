@@ -2,8 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { FormMessage } from '@/components/ui/form-message'
 import { Spinner } from '@/components/ui/spinner'
 import type { ActionResult } from '@/lib/actions'
 import { logout } from '../actions'
@@ -46,11 +46,13 @@ export function LogoutButton() {
         )}
       </Button>
 
-      {state?.success === false ? (
-        <Alert variant="destructive" className="mt-3">
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      ) : null}
+      <FormMessage
+        status={
+          isPending ? 'idle' : state?.success === false ? 'error' : 'idle'
+        }
+        message={isPending || state?.success !== false ? '' : state.message}
+        className="mt-3"
+      />
     </form>
   )
 }

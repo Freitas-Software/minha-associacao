@@ -31,47 +31,47 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
 }> = [
   {
     code: PERMISSIONS.organizationRead,
-    description: 'View organization data',
+    description: 'Ver dados da organização',
     category: 'organization',
   },
   {
     code: PERMISSIONS.organizationUpdate,
-    description: 'Edit organization data',
+    description: 'Editar dados da organização',
     category: 'organization',
   },
   {
     code: PERMISSIONS.organizationActivate,
-    description: 'Activate the organization',
+    description: 'Ativar a organização',
     category: 'organization',
   },
   {
     code: PERMISSIONS.rolesRead,
-    description: 'View roles and permissions',
+    description: 'Ver cargos e permissões',
     category: 'roles',
   },
   {
     code: PERMISSIONS.rolesManage,
-    description: 'Create, update and deactivate roles',
+    description: 'Criar, editar e desativar cargos',
     category: 'roles',
   },
   {
     code: PERMISSIONS.membersRead,
-    description: 'View memberships',
+    description: 'Ver vínculos de membros',
     category: 'members',
   },
   {
     code: PERMISSIONS.membersManage,
-    description: 'Deactivate and reactivate memberships',
+    description: 'Desativar e reativar vínculos de membros',
     category: 'members',
   },
   {
     code: PERMISSIONS.invitesManage,
-    description: 'Create and revoke invitations',
+    description: 'Criar e revogar convites',
     category: 'invites',
   },
   {
     code: PERMISSIONS.auditRead,
-    description: 'View audit events',
+    description: 'Ver registros de auditoria',
     category: 'audit',
   },
 ]

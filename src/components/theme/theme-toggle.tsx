@@ -11,6 +11,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label="Alternar tema claro e escuro"
+      title="Alternar tema claro e escuro"
       onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
     >
       <Sun className="size-5 dark:hidden" aria-hidden="true" />
