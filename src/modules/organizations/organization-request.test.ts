@@ -389,6 +389,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
       const approved = await listOrganizationRequests(
         adminId,
         'approved',
+        {},
         database,
       )
 
@@ -404,6 +405,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
       const rejected = await listOrganizationRequests(
         adminId,
         'rejected',
+        {},
         database,
       )
 
@@ -418,6 +420,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
       const pending = await listOrganizationRequests(
         adminId,
         'pending',
+        {},
         database,
       )
 
@@ -427,8 +430,34 @@ test('organization requests on PostgreSQL, using temporary tables', {
 
       assert.equal(pending.requests.length, 0)
 
+      const firstPage = await listOrganizationRequests(
+        adminId,
+        'approved',
+        { limit: 1 },
+        database,
+      )
+
+      assert.equal(firstPage.status, 'ok')
+
+      if (firstPage.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(firstPage.requests.length, 1)
+
+      const secondPage = await listOrganizationRequests(
+        adminId,
+        'approved',
+        { limit: 1, offset: 1 },
+        database,
+      )
+
+      assert.equal(secondPage.status, 'ok')
+
+      if (secondPage.status !== 'ok') throw new Error('Expected history')
+
+      assert.equal(secondPage.requests.length, 0)
+
       assert.deepEqual(
-        await listOrganizationRequests(requesterId, 'approved', database),
+        await listOrganizationRequests(requesterId, 'approved', {}, database),
         { status: 'forbidden' },
       )
     })
