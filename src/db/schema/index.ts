@@ -1,5 +1,6 @@
 export * from './accounts'
 export * from './audit-events'
+export * from './email-change-requests'
 export * from './invites'
 export * from './login-rate-limits'
 export * from './memberships'
