@@ -646,6 +646,7 @@ export type OrganizationMembershipListItem = {
   name: string
   email: string
   documentNumber: string
+  roleId: string
   roleName: string
   status: 'active' | 'inactive'
   joinedAt: Date
@@ -679,6 +680,7 @@ export async function listOrganizationMemberships(
       name: users.name,
       email: users.email,
       documentNumber: users.documentNumber,
+      roleId: roles.id,
       roleName: roles.name,
       status: memberships.status,
       joinedAt: memberships.joinedAt,
@@ -938,4 +940,195 @@ export async function updateRole(
 
     throw error
   }
+}
+
+export type AssignableRole = {
+  id: string
+  name: string
+  hasFullAccess: boolean
+}
+
+export type ListAssignableRolesResult =
+  | { status: 'ok'; roles: AssignableRole[] }
+  | { status: 'forbidden' }
+
+export async function listAssignableRoles(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<ListAssignableRolesResult> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.membersManage)) {
+    return { status: 'forbidden' }
+  }
+
+  const rows = await database
+    .select({
+      id: roles.id,
+      name: roles.name,
+      hasFullAccess: roles.hasFullAccess,
+    })
+    .from(roles)
+    .where(
+      and(eq(roles.organizationId, organizationId), eq(roles.isActive, true)),
+    )
+    .orderBy(roles.name)
+
+  return {
+    status: 'ok',
+    roles: access.hasFullAccess
+      ? rows
+      : rows.filter(role => !role.hasFullAccess),
+  }
+}
+
+export type UpdateMembershipRoleResult =
+  | { status: 'updated' }
+  | { status: 'unchanged' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'inactive-membership' }
+  | { status: 'invalid-role' }
+  | { status: 'role-not-allowed' }
+  | { status: 'last-full-access-member' }
+
+export async function updateMembershipRole(
+  input: {
+    actorUserId: string
+    membershipId: string
+    roleId: string
+  },
+  database: typeof db = db,
+): Promise<UpdateMembershipRoleResult> {
+  const [target] = await database
+    .select({
+      organizationId: memberships.organizationId,
+    })
+    .from(memberships)
+    .where(eq(memberships.id, input.membershipId))
+    .limit(1)
+
+  if (!target) return { status: 'not-found' }
+
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    target.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.membersManage)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, target.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+
+    const [membership] = await tx
+      .select({
+        id: memberships.id,
+        status: memberships.status,
+        roleId: memberships.roleId,
+        currentHasFullAccess: roles.hasFullAccess,
+      })
+      .from(memberships)
+      .innerJoin(
+        roles,
+        and(
+          eq(roles.id, memberships.roleId),
+          eq(roles.organizationId, memberships.organizationId),
+        ),
+      )
+      .where(eq(memberships.id, input.membershipId))
+      .limit(1)
+      .for('update')
+
+    if (!membership) return { status: 'not-found' as const }
+
+    if (membership.status === 'inactive') {
+      return { status: 'inactive-membership' as const }
+    }
+
+    const [newRole] = await tx
+      .select({
+        id: roles.id,
+        hasFullAccess: roles.hasFullAccess,
+      })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, input.roleId),
+          eq(roles.organizationId, target.organizationId),
+          eq(roles.isActive, true),
+        ),
+      )
+      .limit(1)
+
+    if (!newRole) return { status: 'invalid-role' as const }
+
+    if (newRole.id === membership.roleId) {
+      return { status: 'unchanged' as const }
+    }
+
+    if (newRole.hasFullAccess && !access.hasFullAccess) {
+      return { status: 'role-not-allowed' as const }
+    }
+
+    if (membership.currentHasFullAccess && !newRole.hasFullAccess) {
+      const [otherFullAccess] = await tx
+        .select({ id: memberships.id })
+        .from(memberships)
+        .innerJoin(
+          roles,
+          and(
+            eq(roles.id, memberships.roleId),
+            eq(roles.organizationId, memberships.organizationId),
+          ),
+        )
+        .where(
+          and(
+            eq(memberships.organizationId, target.organizationId),
+            eq(memberships.status, 'active'),
+            eq(roles.isActive, true),
+            eq(roles.hasFullAccess, true),
+            ne(memberships.id, membership.id),
+          ),
+        )
+        .limit(1)
+
+      if (!otherFullAccess) {
+        return { status: 'last-full-access-member' as const }
+      }
+    }
+
+    await tx
+      .update(memberships)
+      .set({ roleId: newRole.id, updatedAt: new Date() })
+      .where(eq(memberships.id, membership.id))
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: target.organizationId,
+      action: 'membership.role_changed',
+      entityType: 'membership',
+      entityId: membership.id,
+      metadata: {
+        fromRoleId: membership.roleId,
+        toRoleId: newRole.id,
+      },
+    })
+
+    return { status: 'updated' as const }
+  })
 }

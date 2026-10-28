@@ -28,6 +28,7 @@ const actionLabels: Record<string, string> = {
   'invite.created': 'Convite criado',
   'invite.revoked': 'Convite revogado',
   'membership.deactivated': 'Vínculo desativado',
+  'membership.role_changed': 'Cargo do vínculo alterado',
 }
 
 function formatDateTime(date: Date): string {
