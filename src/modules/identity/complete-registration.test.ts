@@ -45,6 +45,9 @@ test('registration completion on PostgreSQL, using temporary tables', {
       CREATE TEMP TABLE registration_requests (
         id uuid PRIMARY KEY,
         user_id uuid,
+        organization_id uuid,
+        role_id uuid,
+        created_by_user_id uuid,
         name varchar(255) NOT NULL,
         document_number varchar(11) NOT NULL,
         email varchar(55) NOT NULL,
@@ -55,12 +58,22 @@ test('registration completion on PostgreSQL, using temporary tables', {
         consumed_at timestamptz,
         invalidated_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TEMP TABLE registration_contact_conflicts (
+        id uuid PRIMARY KEY,
+        user_id uuid NOT NULL,
+        organization_id uuid NOT NULL,
+        email varchar(55) NOT NULL,
+        phone varchar(11) NOT NULL,
+        created_by_user_id uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        resolved_at timestamptz
       )
     `)
 
     async function reset() {
       await pool.query(
-        'TRUNCATE pg_temp.accounts, pg_temp.users, pg_temp.registration_requests',
+        'TRUNCATE pg_temp.accounts, pg_temp.users, pg_temp.registration_requests, pg_temp.registration_contact_conflicts',
       )
     }
 
