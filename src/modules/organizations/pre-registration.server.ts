@@ -36,6 +36,7 @@ export type PreRegistrationLinkResult =
   | { status: 'account-exists' }
   | { status: 'already-member' }
   | { status: 'rate-limited' }
+  | { status: 'not-found' }
 
 export type PreRegistrationResult =
   | {
@@ -49,6 +50,7 @@ export type PreRegistrationResult =
   | { status: 'account-exists' }
   | { status: 'already-member' }
   | { status: 'rate-limited' }
+  | { status: 'not-found' }
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -320,4 +322,46 @@ export async function requestPreRegistration(
     sentTo: maskEmail(pendingEmail.to),
     contactConflict: pendingEmail.contactConflict,
   }
+}
+
+export async function resendPreRegistration(
+  input: {
+    actorUserId: string
+    registrationRequestId: string
+  },
+  database: typeof db = db,
+): Promise<PreRegistrationResult> {
+  const [request] = await database
+    .select({
+      organizationId: registrationRequests.organizationId,
+      roleId: registrationRequests.roleId,
+      name: registrationRequests.name,
+      documentNumber: registrationRequests.documentNumber,
+      email: registrationRequests.email,
+      phone: registrationRequests.phone,
+      birthDate: registrationRequests.birthDate,
+    })
+    .from(registrationRequests)
+    .where(eq(registrationRequests.id, input.registrationRequestId))
+    .limit(1)
+
+  if (!request?.organizationId || !request.roleId) {
+    return { status: 'not-found' }
+  }
+
+  return requestPreRegistration(
+    {
+      actorUserId: input.actorUserId,
+      organizationId: request.organizationId,
+      roleId: request.roleId,
+      person: {
+        name: request.name,
+        documentNumber: request.documentNumber,
+        email: request.email,
+        phone: request.phone,
+        birthDate: request.birthDate,
+      },
+    },
+    database,
+  )
 }

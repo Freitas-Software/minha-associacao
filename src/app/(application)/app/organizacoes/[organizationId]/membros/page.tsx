@@ -16,6 +16,7 @@ import {
 } from '@/modules/organizations/organization.server'
 import { ChangeMemberRoleForm } from './components/change-member-role-form'
 import { DeactivateMemberForm } from './components/deactivate-member-form'
+import { ResendPreRegistrationForm } from './components/resend-pre-registration-form'
 
 export const metadata: Metadata = {
   title: 'Membros',
@@ -131,6 +132,11 @@ async function MembersContent({ params }: MembersPageProps) {
                       {expired ? 'Expirado' : 'Aguardando ativação'}
                     </Badge>
                   </div>
+
+                  <ResendPreRegistrationForm
+                    organizationId={summary.organization.id}
+                    registrationRequestId={request.id}
+                  />
                 </li>
               )
             })}

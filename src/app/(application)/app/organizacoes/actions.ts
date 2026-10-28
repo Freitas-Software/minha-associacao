@@ -39,7 +39,10 @@ import {
   ORGANIZATION_REQUEST_DOCUMENT_TYPES,
   ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
 } from '@/modules/organizations/organization-request-limits'
-import { requestPreRegistration } from '@/modules/organizations/pre-registration.server'
+import {
+  requestPreRegistration,
+  resendPreRegistration,
+} from '@/modules/organizations/pre-registration.server'
 
 function readText(formData: FormData, key: string): string {
   const value = formData.get(key)
@@ -872,6 +875,8 @@ export async function requestPreRegistrationAction(
           message:
             'Já foi enviado um link recentemente. Aguarde um minuto antes de tentar novamente.',
         }
+      case 'not-found':
+        return { status: 'error', message: 'Pessoa não encontrada.' }
     }
 
     return {
@@ -1015,6 +1020,85 @@ export async function updateMembershipRoleAction(
     return {
       status: 'error',
       message: 'Não foi possível alterar o cargo do vínculo agora.',
+    }
+  }
+}
+
+export async function resendPreRegistrationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const registrationRequestId = readText(formData, 'registrationRequestId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(registrationRequestId).success
+  ) {
+    return { status: 'error', message: 'Pré-cadastro inválido.' }
+  }
+
+  try {
+    const result = await resendPreRegistration({
+      actorUserId: session.userId,
+      registrationRequestId,
+    })
+
+    switch (result.status) {
+      case 'link-sent':
+        return {
+          status: 'success',
+          message: result.contactConflict
+            ? `Link reenviado para ${result.sentTo}. O contato informado difere do cadastro existente; a pessoa poderá revisá-lo ao concluir a conta.`
+            : `Link reenviado para ${result.sentTo}.`,
+        }
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para reenviar este pré-cadastro.',
+        }
+      case 'invalid-role':
+        return {
+          status: 'error',
+          message: 'O cargo deste pré-cadastro não está mais ativo.',
+        }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'O cargo deste pré-cadastro exige acesso completo que você não possui.',
+        }
+      case 'account-exists':
+        return {
+          status: 'error',
+          message:
+            'Esta pessoa já possui conta. Envie um convite para ela ingressar na organização.',
+        }
+      case 'already-member':
+        return {
+          status: 'error',
+          message: 'Esta pessoa já possui vínculo com a organização.',
+        }
+      case 'rate-limited':
+        return {
+          status: 'error',
+          message:
+            'Já foi enviado um link recentemente. Aguarde um minuto antes de tentar novamente.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Pré-cadastro não encontrado.' }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível reenviar o link agora.',
+    }
+  } catch {
+    console.error('[resendPreRegistrationAction]', { stage: 'resend' })
+    return {
+      status: 'error',
+      message: 'Não foi possível reenviar o link agora.',
     }
   }
 }
