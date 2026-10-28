@@ -1,338 +1,188 @@
 # Associae
 
-Aplicação web fullstack para gestão de associações e organizações, desenvolvida com Next.js.
+Aplicação web fullstack para gestão de associações, com autenticação por CPF, organizações multi-tenant, cargos, convites, membros e pré-cadastro de pessoas.
 
-> **Repositório privado — uso interno.**
->
-> Este repositório é destinado exclusivamente aos integrantes autorizados da equipe de desenvolvimento. O acesso ao código-fonte não implica autorização para redistribuição, publicação ou utilização fora do projeto.
+**Produção:** https://www.associae.com.br
 
-## 1. Visão geral
+> Repositório privado, destinado exclusivamente aos integrantes autorizados da equipe. O acesso ao código não autoriza redistribuição ou uso fora do projeto.
 
-A Associae é uma plataforma destinada à centralização de processos administrativos e operacionais de associações.
+## Stack
 
-A aplicação web é desenvolvida com Next.js e também disponibilizada como Progressive Web App (PWA) instalável em desktops, com funcionamento dependente de conexão à internet.
-
-O planejamento de evolução inclui aplicativos nativos para iOS e Android, que deverão compartilhar as regras de negócio e os serviços de backend da plataforma.
-
-### Tecnologias
-
-| Tecnologia | Finalidade |
+| Tecnologia | Uso |
 |---|---|
-| Next.js | Framework fullstack |
-| React | Interface de usuário |
-| TypeScript | Linguagem de desenvolvimento |
-| App Router | Roteamento e renderização |
-| PWA | Instalação da aplicação web no desktop |
-| Vercel | Hospedagem da aplicação web |
+| Next.js 16.4.3 | App Router, Server Components, Server Actions e Route Handlers |
+| React 19 | Interface |
+| TypeScript | Tipagem estrita |
+| PostgreSQL 18 | Banco de dados |
+| Drizzle ORM | Schema e migrações |
+| Biome | Formatação, lint e organização de imports |
+| Resend | Envio de emails de confirmação e recuperação |
+| Vercel + Neon | Hospedagem e banco de produção |
+| pnpm | Gerenciador de pacotes |
 
-**A confirmar no código:** gerenciador de pacotes, banco de dados, ORM, autenticação, biblioteca de componentes, ferramentas de lint e testes.
+A autenticação é própria, com CPF, Argon2id e sessões opacas persistidas no banco.
 
-## 2. Requisitos de desenvolvimento
+## Requisitos
 
-Antes de iniciar, instale:
+- Node.js 26
+- pnpm
+- PostgreSQL 18
+- Git
 
-- Node.js na versão definida pelo projeto.
-- Gerenciador de pacotes utilizado pelo repositório.
-- Git.
-- Editor ou IDE com suporte a TypeScript.
-
-Respeite as versões declaradas nos arquivos de configuração e no lockfile do repositório.
-
-## 3. Configuração do ambiente
-
-### Clonar o repositório
+## Configuração local
 
 ```bash
-git clone <URL_PRIVADA_DO_REPOSITORIO>
-cd <DIRETORIO_DO_PROJETO>
-```
-
-O desenvolvedor precisa ter acesso autorizado à organização e ao repositório.
-
-### Instalar dependências
-
-Utilize o gerenciador de pacotes e o lockfile existentes no projeto.
-
-Exemplos:
-
-```bash
-# pnpm
-pnpm install --frozen-lockfile
-
-# npm
-npm ci
-```
-
-Execute apenas o comando correspondente à configuração real do repositório.
-
-### Variáveis de ambiente
-
-Consulte o arquivo `.env.example`, quando disponível, para identificar as variáveis necessárias.
-
-Crie o arquivo local de ambiente apropriado para a aplicação:
-
-```bash
+pnpm install
 cp .env.example .env.local
 ```
 
-Preencha os valores conforme as instruções internas da equipe.
-
-**Regras obrigatórias:**
-
-- Nunca versionar arquivos com credenciais reais.
-- Nunca compartilhar tokens, senhas ou chaves privadas em issues, commits ou pull requests.
-- Variáveis `NEXT_PUBLIC_*` são expostas ao código executado no navegador e não devem conter segredos.
-- Credenciais de produção devem permanecer restritas aos responsáveis autorizados.
-- Não utilizar dados pessoais reais de associados em ambientes locais sem autorização e controles adequados.
-
-### Executar localmente
-
-Após configurar o ambiente, utilize o script de desenvolvimento definido no `package.json`.
-
-Para projetos com o script padrão `dev`:
+Para subir um PostgreSQL local com Docker:
 
 ```bash
-npm run dev
+docker run --name associae-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=associae \
+  -p 5432:5432 \
+  -d postgres:18
 ```
 
-Ou o equivalente do gerenciador de pacotes adotado.
+Depois:
 
-A aplicação normalmente estará disponível em:
+```bash
+pnpm db:migrate
+pnpm dev
+```
+
+A aplicação fica em `http://localhost:3000`.
+
+## Variáveis de ambiente
+
+| Variável | Uso |
+|---|---|
+| `DATABASE_URL` | Conexão PostgreSQL da aplicação |
+| `TEST_DATABASE_URL` | Conexão usada pelos testes de integração |
+| `RUN_DATABASE_TESTS` | `1` habilita os testes que usam PostgreSQL |
+| `APP_URL` | URL pública usada nos links de email |
+| `RESEND_API_KEY` | Chave da API do Resend |
+| `EMAIL_FROM` | Remetente verificado, ex.: `Associae <no-reply@associae.com.br>` |
+| `CRON_SECRET` | Bearer token exigido pela rota de limpeza agendada |
+| `LOGIN_TRUSTED_IP_HEADER` | Header de IP confiável quando houver proxy reverso |
+
+Nunca versionar `.env.local` ou credenciais reais. Fora do desenvolvimento local, `APP_URL` deve usar HTTPS.
+
+## Scripts
+
+| Comando | Função |
+|---|---|
+| `pnpm dev` | Servidor de desenvolvimento |
+| `pnpm build` | Build de produção |
+| `pnpm start` | Servidor do build |
+| `pnpm typecheck` | Verificação TypeScript |
+| `pnpm check` | Biome: lint, formato e imports |
+| `pnpm lint` / `pnpm format` | Lint e formatação isolados |
+| `pnpm test` | Testes unitários e de integração |
+| `pnpm db:migrate` | Aplica migrações pendentes |
+| `pnpm platform-admin:grant <email>` | Concede acesso de administrador da plataforma a um usuário existente |
+
+## Testes
+
+```bash
+pnpm test
+```
+
+Os testes de integração usam tabelas temporárias e só rodam quando `RUN_DATABASE_TESTS=1` e `TEST_DATABASE_URL` estão definidos:
+
+```bash
+RUN_DATABASE_TESTS=1 pnpm test
+```
+
+O CI sobe um PostgreSQL e executa a suíte completa. Testes que dependem de banco não devem ser marcados como opcionais no CI.
+
+## Arquitetura
 
 ```text
-http://localhost:3000
+src/
+  app/                 Rotas, layouts, Server Actions e Route Handlers
+  components/          Componentes compartilhados de UI e aplicação
+  db/
+    schema/            Tabelas e enums Drizzle
+  modules/
+    audit/             Eventos de auditoria
+    authorization/     Permissões e verificação de acesso
+    identity/          Cadastro, confirmação, sessões e senha
+    invites/           Convites individuais e compartilhados
+    organizations/     Organizações, cargos, membros e pré-cadastro
+    maintenance/       Limpeza operacional
+  lib/                 Sessão, email, erros, formatação e utilitários
+docs/                  Regras de negócio, modelo de organizações e UI/UX
+drizzle/               Migrações e snapshots
+scripts/               Utilitários operacionais
 ```
 
-## 4. Arquitetura
+### Decisões principais
 
-O projeto utiliza Next.js com App Router, combinando renderização no servidor, componentes interativos e funcionalidades de backend.
+- `users` representa a pessoa; `accounts` representa as credenciais. Uma pessoa pode existir antes da conta.
+- O CPF é identidade global e não deve gerar duplicatas entre organizações.
+- Toda autorização é verificada no servidor por permissões de cargo e vínculo ativo.
+- Server Actions validam entrada, aplicam regras de negócio e registram auditoria.
+- Cada organização é um limite de isolamento; IDs enviados pelo cliente não são autorização.
+- O cargo padrão de ingresso não pode ser de diretoria nem de acesso completo.
+- A organização não pode ficar sem cargo padrão ativo, sem membro ativo com acesso completo ou com cargo em uso desativado.
 
-### Responsabilidades
+## Fluxos implementados
 
-**Interface web**
+- Cadastro público com confirmação de email e definição de senha.
+- Login por CPF, sessões opacas com hash, recuperação e redefinição de senha.
+- Solicitação de organização pelo presidente com CNPJ e ata de eleição.
+- Revisão da ata e aprovação/rejeição por administrador da plataforma.
+- Criação da organização em provisionamento, cargos iniciais e presidente ativo.
+- Ativação com invariantes de cargos e vínculos.
+- Criação, edição, desativação e reativação de cargos.
+- Listagem e desativação de membros com motivo e auditoria.
+- Convites individuais e compartilhados, com expiração, limite de usos e reativação de vínculo inativo.
+- Pré-cadastro por operador, com escolha de cargo, link de ativação e resolução de contato divergente pelo titular.
+- Painel de solicitações de organização para administradores da plataforma.
 
-Responsável pela apresentação de dados, navegação, formulários, estados de interface e interação com o usuário.
+## Banco de dados e migrações
 
-**Camada de aplicação**
+O schema fica em `src/db/schema` e as migrações em `drizzle/`.
 
-Responsável pela execução dos casos de uso, coordenação das operações e aplicação das regras de negócio.
-
-**Camada de acesso a dados**
-
-Responsável pela persistência e recuperação de informações, respeitando as regras de isolamento e autorização definidas pela aplicação.
-
-**API**
-
-Os futuros aplicativos nativos deverão acessar funcionalidades do backend por meio de contratos de API autenticados e versionados quando necessário.
-
-A implementação da API deverá reutilizar as regras de negócio existentes, evitando duplicação entre clientes.
-
-### Diretrizes arquiteturais
-
-- Priorizar Server Components para renderização e acesso a dados no servidor.
-- Utilizar Client Components quando houver necessidade de interatividade no navegador.
-- Manter validações e decisões de autorização no servidor.
-- Evitar concentrar regras de negócio diretamente nos componentes React.
-- Tratar Server Actions e Route Handlers como pontos de entrada, não como substitutos da camada de serviços.
-- Evitar dependências desnecessárias entre interface, regras de negócio e persistência.
-- Preparar contratos reutilizáveis para os futuros clientes móveis, sem antecipar abstrações que ainda não sejam necessárias.
-
-A organização real dos diretórios e módulos deve ser documentada após validação da estrutura atual do repositório.
-
-## 5. Progressive Web App
-
-A aplicação web oferece suporte à instalação em desktops compatíveis.
-
-### Características
-
-- Instalação por navegadores compatíveis.
-- Execução em janela independente.
-- Identidade visual e ícones próprios.
-- Dependência de conexão com a internet.
-- Compartilhamento da mesma aplicação web e backend.
-
-### Configuração
-
-O manifesto da aplicação está localizado em:
-
-```text
-public/site.webmanifest
+```bash
+pnpm db:migrate
 ```
 
-Os metadados de instalação e os ícones são integrados ao Next.js.
+Antes de publicar uma alteração de schema:
 
-A instalação como PWA não implica suporte offline. Qualquer futura implementação de Service Worker, armazenamento local persistente ou cache de respostas autenticadas deverá ser avaliada quanto a segurança, consistência e atualização de dados.
+1. Gere e revise a migração.
+2. Aplique no banco local.
+3. Aplique no Neon de produção antes de publicar o código que depende dela.
+4. Nunca edite uma migração já aplicada em produção.
 
-## 6. Segurança
+## Deploy
 
-Toda funcionalidade deve considerar autenticação, autorização, integridade dos dados e proteção das informações dos usuários.
+- Aplicação: Vercel.
+- Banco: Neon PostgreSQL.
+- Domínio: `https://www.associae.com.br` (o apex redireciona para `www`).
+- Cron: `/api/cron/cleanup`, diariamente às 03:00, protegido por `CRON_SECRET`.
+- Emails: domínio verificado no Resend e remetente em `EMAIL_FROM`.
+- O primeiro administrador da plataforma precisa ser concedido manualmente com `pnpm platform-admin:grant <email>`; essa conta deve existir antes.
 
-### Requisitos gerais
+Após mudanças de variáveis de ambiente, faça um novo deploy para as funções usarem os valores atualizados.
 
-- Verificar autorização no servidor para cada operação protegida.
-- Nunca confiar exclusivamente em validações executadas no navegador.
-- Validar entradas nos limites da aplicação.
-- Não registrar senhas, tokens ou dados sensíveis em logs.
-- Não expor detalhes internos de erros ao usuário final.
-- Utilizar conexões seguras em produção.
-- Aplicar o princípio do menor privilégio.
-- Avaliar impacto de segurança em alterações de autenticação, sessões e permissões.
+## Documentação
 
-### Isolamento de dados
+- [Regras de negócio](docs/regras-de-negocio.md)
+- [Modelo de organizações](docs/organizacoes-modelo.md)
+- [Diretrizes de UI/UX e acessibilidade](docs/ui-ux-guidelines.md)
+- [Instruções para agentes](AGENTS.md)
 
-Caso a aplicação opere com múltiplas associações, todas as consultas e operações deverão respeitar os limites de acesso da organização correspondente.
+## Git
 
-A identificação da associação ativa no cliente não constitui, isoladamente, uma verificação de autorização.
-
-O isolamento deve ser garantido e testado no servidor.
-
-## 7. Padrões de desenvolvimento
-
-### Código
-
-- Utilizar TypeScript e respeitar as configurações de tipagem do projeto.
-- Preferir código legível e responsabilidades bem definidas.
-- Evitar duplicação desnecessária.
-- Manter convenções de nomes consistentes.
-- Evitar introduzir dependências sem justificativa técnica.
-- Seguir as ferramentas de formatação e análise estática configuradas no repositório.
-
-### Componentes
-
-- Preferir componentes reutilizáveis quando houver reutilização real.
-- Preservar os padrões de interface e acessibilidade existentes.
-- Tratar estados de carregamento, erro e ausência de dados.
-- Manter consistência entre os temas claro e escuro.
-- Evitar acoplamento direto entre componentes visuais e infraestrutura de persistência.
-
-### Banco de dados
-
-Alterações no modelo de dados devem ser revisadas considerando:
-
-- Compatibilidade com dados existentes.
-- Necessidade de migrações.
-- Integridade referencial.
-- Possibilidade de reversão.
-- Impacto em consultas e funcionalidades existentes.
-
-## 8. Fluxo de trabalho Git
-
-O desenvolvimento deve ocorrer por meio de branches e pull requests.
-
-### Branches
-
-Convenção sugerida:
-
-```text
-feat/nome-da-funcionalidade
-fix/descritivo-da-correcao
-refactor/escopo-da-alteracao
-docs/assunto
-chore/tarefa-tecnica
-```
-
-Exemplos:
-
-```text
-feat/member-registration
-fix/session-expiration
-refactor/association-service
-```
-
-### Commits
-
-Adotar mensagens claras e, preferencialmente, a convenção Conventional Commits.
-
-```text
-feat: add member registration
-fix: correct session validation
-refactor: extract association service
-docs: update setup instructions
-chore: update dependencies
-```
-
-### Pull requests
-
-Toda alteração destinada à branch principal deve passar por revisão.
-
-O pull request deve informar:
-
-- Objetivo e contexto da alteração.
-- Resumo da implementação.
-- Como a alteração foi validada.
-- Impactos em banco de dados, autenticação ou infraestrutura, quando houver.
-- Capturas de tela para mudanças visuais relevantes.
-
-Evitar alterações diretas na branch principal, exceto pelos procedimentos de emergência aprovados pela equipe.
-
-## 9. Qualidade e testes
-
-Antes de abrir um pull request:
-
-1. Verifique a tipagem e a análise estática do projeto.
-2. Execute os testes disponíveis.
-3. Confira os fluxos impactados pela alteração.
-4. Verifique possíveis regressões.
-5. Confirme que nenhum segredo ou arquivo local foi incluído no commit.
-
-Scripts específicos de lint, typecheck, testes e build devem ser consultados no `package.json`.
-
-Funcionalidades críticas, especialmente autenticação, autorização, isolamento entre associações e operações de persistência, devem receber cobertura de testes adequada.
-
-## 10. Deploy e ambientes
-
-A aplicação web utiliza a Vercel como plataforma de hospedagem.
-
-**Produção:**
-
-https://minha-associacao.vercel.app
-
-A configuração de ambientes, domínios e permissões administrativas deve ser mantida pelos responsáveis técnicos.
-
-### Cuidados com deploy
-
-- Validar as alterações antes da publicação.
-- Não modificar variáveis de produção sem verificar o impacto.
-- Avaliar migrações antes de publicar versões incompatíveis.
-- Não utilizar o ambiente de produção para testes destrutivos.
-- Definir procedimento de rollback para alterações de alto risco.
-
-O fluxo de CI/CD, as regras de promoção entre ambientes e as estratégias de rollback deverão ser documentados conforme a configuração efetiva do projeto.
-
-## 11. Organização e acesso
-
-Este repositório pertence à organização responsável pelo desenvolvimento da Associae e possui acesso restrito.
-
-### Política de colaboração
-
-- O acesso deve ser concedido individualmente aos integrantes autorizados.
-- Permissões devem corresponder às responsabilidades de cada integrante.
-- Alterações relevantes devem ser rastreáveis por commits e pull requests.
-- Questões técnicas devem ser registradas nas ferramentas de acompanhamento adotadas pelo time.
-- O desligamento de um integrante deve resultar na revisão e revogação dos acessos correspondentes.
-
-Não publicar código-fonte, documentação interna, dados ou credenciais sem autorização.
-
-## 12. Evolução do produto
-
-As frentes previstas incluem:
-
-**Web**
-
-Evolução contínua da aplicação Next.js, com foco em funcionalidades administrativas, experiência do usuário, segurança e desempenho.
-
-**Desktop**
-
-Distribuição da aplicação web como PWA, sem necessidade inicial de um aplicativo desktop nativo.
-
-**Mobile**
-
-Desenvolvimento futuro de aplicativos nativos para iOS e Android, reutilizando serviços e contratos de backend.
-
-Decisões arquiteturais de impacto significativo deverão ser discutidas e registradas pelo time antes da implementação.
+- Desenvolva em branches `feat/`, `fix/`, `refactor/`, `docs/` ou `chore/`.
+- Use Conventional Commits.
+- Abra pull request com objetivo, resumo, validação e impacto em banco/infraestrutura.
+- Não faça commit de segredos, `.env.local`, artefatos de build ou dados pessoais reais.
 
 ---
 
-**Associae — Documentação interna de desenvolvimento.**
-
-Este documento deve ser atualizado sempre que mudanças na configuração, arquitetura ou processo de desenvolvimento afetarem o onboarding e o trabalho da equipe.
+**Associae — documentação interna de desenvolvimento.**
