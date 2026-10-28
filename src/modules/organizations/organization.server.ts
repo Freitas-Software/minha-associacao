@@ -1,10 +1,11 @@
 import 'server-only'
-import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lt, ne, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   invites,
   memberships,
   organizations,
+  registrationRequests,
   rolePermissions,
   roles,
   users,
@@ -1131,4 +1132,62 @@ export async function updateMembershipRole(
 
     return { status: 'updated' as const }
   })
+}
+
+export type PendingPreRegistration = {
+  id: string
+  name: string
+  email: string
+  roleName: string
+  createdAt: Date
+  expiresAt: Date
+}
+
+export type ListPendingPreRegistrationsResult =
+  | { status: 'ok'; requests: PendingPreRegistration[] }
+  | { status: 'forbidden' }
+
+export async function listPendingPreRegistrations(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<ListPendingPreRegistrationsResult> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.membersManage)) {
+    return { status: 'forbidden' }
+  }
+
+  const requests = await database
+    .select({
+      id: registrationRequests.id,
+      name: registrationRequests.name,
+      email: registrationRequests.email,
+      roleName: roles.name,
+      createdAt: registrationRequests.createdAt,
+      expiresAt: registrationRequests.expiresAt,
+    })
+    .from(registrationRequests)
+    .innerJoin(
+      roles,
+      and(
+        eq(roles.id, registrationRequests.roleId),
+        eq(roles.organizationId, registrationRequests.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(registrationRequests.organizationId, organizationId),
+        isNull(registrationRequests.consumedAt),
+        isNull(registrationRequests.invalidatedAt),
+      ),
+    )
+    .orderBy(desc(registrationRequests.createdAt))
+    .limit(50)
+
+  return { status: 'ok', requests }
 }

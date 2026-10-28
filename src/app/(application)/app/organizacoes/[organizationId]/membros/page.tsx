@@ -11,6 +11,8 @@ import {
   getOrganizationSummary,
   listAssignableRoles,
   listOrganizationMemberships,
+  listPendingPreRegistrations,
+  type PendingPreRegistration,
 } from '@/modules/organizations/organization.server'
 import { ChangeMemberRoleForm } from './components/change-member-role-form'
 import { DeactivateMemberForm } from './components/deactivate-member-form'
@@ -26,6 +28,13 @@ type MembersPageProps = {
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date)
+}
+
+function formatDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 function maskDocument(documentNumber: string): string {
@@ -49,11 +58,18 @@ async function MembersContent({ params }: MembersPageProps) {
     summary.access.permissions.includes(PERMISSIONS.membersManage)
 
   let assignableRoles: AssignableRole[] = []
+  let pendingPreRegistrations: PendingPreRegistration[] = []
 
   if (canManage) {
-    const rolesData = await listAssignableRoles(session.userId, organizationId)
+    const [rolesData, pendingData] = await Promise.all([
+      listAssignableRoles(session.userId, organizationId),
+      listPendingPreRegistrations(session.userId, organizationId),
+    ])
 
     if (rolesData.status === 'ok') assignableRoles = rolesData.roles
+    if (pendingData.status === 'ok') {
+      pendingPreRegistrations = pendingData.requests
+    }
   }
 
   return (
@@ -80,6 +96,47 @@ async function MembersContent({ params }: MembersPageProps) {
           </Link>
         ) : null}
       </header>
+
+      {pendingPreRegistrations.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Pré-cadastros pendentes
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Pessoas que ainda não concluíram a conta. O pré-cadastro permanece
+            aqui até a ativação ou a expiração do link.
+          </p>
+          <ul className="space-y-3">
+            {pendingPreRegistrations.map(request => {
+              const expired = request.expiresAt.getTime() <= Date.now()
+
+              return (
+                <li
+                  key={request.id}
+                  className="rounded-lg border bg-background p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{request.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {request.email} · {request.roleName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Solicitado em {formatDateTime(request.createdAt)} ·{' '}
+                        {expired ? 'Expirou em' : 'Expira em'}{' '}
+                        {formatDateTime(request.expiresAt)}
+                      </p>
+                    </div>
+                    <Badge variant={expired ? 'destructive' : 'secondary'}>
+                      {expired ? 'Expirado' : 'Aguardando ativação'}
+                    </Badge>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {membersData.memberships.length === 0 ? (
         <p className="text-sm text-muted-foreground">
