@@ -13,6 +13,12 @@ Associae is a fullstack application built with Next.js 16.4.3, React 19, TypeScr
 - Inspect relevant code and documentation before modifying existing behavior.
 - Run appropriate checks after changes and report results accurately.
 
+
+## UI and Accessibility
+- Read `docs/ui-ux-guidelines.md` before changing layouts, forms, shared UI components, design tokens, or feedback states.
+- Preserve the accessibility baseline: semantic HTML, persistent labels, visible focus, minimum contrast, keyboard operation, and reduced-motion support.
+- Reuse `FormMessage`, `FormattedInput`, `PasswordInput`, and `ConfirmSubmitButton` instead of duplicating form patterns.
+
 ## Business Rules
 - Read `docs/regras-de-negocio.md` at the start of each work session before working on the project. Revisit relevant sections when the domain changes.
 - Treat this document as the source of confirmed product decisions, not proof of implementation.
