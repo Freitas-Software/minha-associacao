@@ -29,6 +29,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - O operador autorizado pode corrigir esse contato enquanto não houver conta vinculada. Depois disso, vale a edição exclusiva pelo titular.
 - Cadastros existentes devem ser reaproveitados. Um operador de outra organização não recebe, só por informar um CPF, autorização para sobrescrever o perfil global.
 - Quando mais de uma organização pré-cadastra a mesma pessoa com contatos diferentes, o perfil global não é sobrescrito automaticamente. A divergência é registrada e o titular a resolve ao assumir a conta.
+- A alteração de email pelo titular exige a senha atual e confirmação enviada ao novo endereço. O email só é alterado depois que o link é confirmado.
 - Para ativar uma pessoa pré-cadastrada, enviar um link de uso único ao email já registrado em users. O visitante não pode trocar esse endereço durante a tentativa de cadastro.
 - Pelo link validado, a pessoa define sua senha e conclui a criação da conta vinculada ao perfil existente.
 - A confirmação de email antes da criação da conta e a definição da senha pelo link também valem para cadastro público e ingresso por convite compartilhado.
