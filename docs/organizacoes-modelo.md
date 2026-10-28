@@ -372,18 +372,18 @@ Regras de decisão:
 3. Contatos divergentes em perfis globais sem conta não são sobrescritos automaticamente. A divergência é registrada para o titular resolver ao assumir a conta.
 4. O pré-cadastro por operador reutiliza `registration_requests` com organização, cargo e operador; o operador escolhe o cargo inicial e a ativação cria o vínculo.
 5. O titular escolhe o contato a manter ao concluir a conta; a escolha encerra as divergências registradas.
+6. Convites individuais expiram em 7 dias e têm 1 uso; compartilhados expiram em 30 dias com limite definido pelo operador. O reenvio invalida o link anterior e respeita 60 segundos.
 
 ### 8.2 Pendentes
 
 Estas decisões bloqueiam partes do modelo e não devem ser resolvidas por suposição:
 
 1. Quais são os limites dos poderes do administrador da plataforma além do cadastro básico?
-2. Quais são os prazos de expiração, limites de uso e política de reenvio dos convites?
-3. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
-4. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
-5. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
-6. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
-7. Qual é o formato de auditoria exigido para intervenções da plataforma?
+2. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
+3. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
+4. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
+5. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
+6. Qual é o formato de auditoria exigido para intervenções da plataforma?
 
 ## 9. Riscos e cuidados
 
