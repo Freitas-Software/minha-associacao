@@ -248,7 +248,7 @@ A regra confirma que `users` pode existir sem `accounts`, mas não define uma ta
 1. Reutilizar `registration_requests`, adicionando `organization_id` e `created_by_user_id` para links gerados por operador. O `userId` já existente aponta para a pessoa pré-cadastrada.
 2. Criar uma tabela `pre_registrations` separada, com `organization_id`, `user_id`, `created_by_membership_id`, `contact_email` e `converted_at`.
 
-A primeira opção reaproveita o mecanismo de token e confirmação já implementado. A segunda separa melhor a intenção de negócio do token. A decisão fica pendente.
+A primeira opção foi adotada: `registration_requests` recebe `organization_id`, `role_id` e `created_by_user_id`, reaproveitando o token e a confirmação já implementados. O operador escolhe o cargo inicial e a ativação cria o vínculo. Contatos divergentes são registrados em `registration_contact_conflicts` e o titular escolhe o contato ao concluir a conta.
 
 ## 4. Invariantes e verificações
 
@@ -370,6 +370,8 @@ Regras de decisão:
 1. O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar sua existência. Enquanto o vínculo CPF/CNPJ não estiver comprovado por fonte confiável, o administrador da plataforma valida a ata de eleição para reconhecer a autoridade do presidente.
 2. Quando o administrador da plataforma inicia uma organização, ele indica um CPF para receber uma concessão temporária de configuração. A concessão não é vínculo nem acesso completo e termina com a ativação.
 3. Contatos divergentes em perfis globais sem conta não são sobrescritos automaticamente. A divergência é registrada para o titular resolver ao assumir a conta.
+4. O pré-cadastro por operador reutiliza `registration_requests` com organização, cargo e operador; o operador escolhe o cargo inicial e a ativação cria o vínculo.
+5. O titular escolhe o contato a manter ao concluir a conta; a escolha encerra as divergências registradas.
 
 ### 8.2 Pendentes
 
