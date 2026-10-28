@@ -52,10 +52,10 @@ async function OrganizationsContent() {
               </div>
 
               <Link
-                href={`/app/organizacoes/${organization.id}/convites`}
+                href={`/app/organizacoes/${organization.id}`}
                 className="mt-5 inline-block text-sm underline underline-offset-4"
               >
-                Gerenciar convites
+                Abrir organização
               </Link>
             </li>
           ))}
