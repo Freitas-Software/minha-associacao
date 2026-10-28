@@ -18,8 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/app" className="font-semibold text-primary">
             Associae · App
           </Link>
-          <Link href="/app/users" className="text-sm hover:underline">
-            Usuários
+          <Link href="/app/organizacoes" className="text-sm hover:underline">
+            Organizações
           </Link>
           <Link
             href="/"
