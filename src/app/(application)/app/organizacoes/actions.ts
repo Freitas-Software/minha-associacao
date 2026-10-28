@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import z from 'zod'
 import { getCurrentSession, requireSession } from '@/lib/session'
+import { requestRegistrationSchema } from '@/modules/identity/registration.schema'
 import {
   acceptInvite,
   createInvite,
@@ -35,6 +36,7 @@ import {
   ORGANIZATION_REQUEST_DOCUMENT_TYPES,
   ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
 } from '@/modules/organizations/organization-request-limits'
+import { requestPreRegistration } from '@/modules/organizations/pre-registration.server'
 
 function readText(formData: FormData, key: string): string {
   const value = formData.get(key)
@@ -783,6 +785,101 @@ export async function updateRoleAction(
     return {
       status: 'error',
       message: 'Não foi possível atualizar o cargo agora.',
+    }
+  }
+}
+
+export async function requestPreRegistrationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const roleId = readText(formData, 'roleId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(roleId).success
+  ) {
+    return { status: 'error', message: 'Organização ou cargo inválido.' }
+  }
+
+  const parsed = requestRegistrationSchema.safeParse({
+    name: readText(formData, 'name'),
+    documentNumber: readText(formData, 'documentNumber'),
+    email: readText(formData, 'email'),
+    phone: readText(formData, 'phone'),
+    birthDate: readText(formData, 'birthDate'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Confira os campos.',
+    }
+  }
+
+  try {
+    const result = await requestPreRegistration({
+      actorUserId: session.userId,
+      organizationId,
+      roleId,
+      person: parsed.data,
+    })
+
+    switch (result.status) {
+      case 'link-sent':
+        return {
+          status: 'success',
+          message: result.contactConflict
+            ? `Link enviado para ${result.sentTo}. O contato informado difere do cadastro existente; a pessoa poderá revisá-lo ao concluir a conta.`
+            : `Link de ativação enviado para ${result.sentTo}.`,
+        }
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para pré-cadastrar pessoas.',
+        }
+      case 'invalid-role':
+        return {
+          status: 'error',
+          message: 'O cargo selecionado não está ativo nesta organização.',
+        }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você não pode atribuir um cargo com acesso completo sem ter acesso completo.',
+        }
+      case 'account-exists':
+        return {
+          status: 'error',
+          message:
+            'Esta pessoa já possui conta. Envie um convite para ela ingressar na organização.',
+        }
+      case 'already-member':
+        return {
+          status: 'error',
+          message:
+            'Esta pessoa já possui vínculo com a organização. Reative o vínculo por convite, se necessário.',
+        }
+      case 'rate-limited':
+        return {
+          status: 'error',
+          message:
+            'Já foi enviado um link recentemente. Aguarde um minuto antes de tentar novamente.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível pré-cadastrar a pessoa agora.',
+    }
+  } catch {
+    console.error('[requestPreRegistrationAction]', { stage: 'request' })
+    return {
+      status: 'error',
+      message: 'Não foi possível pré-cadastrar a pessoa agora.',
     }
   }
 }
