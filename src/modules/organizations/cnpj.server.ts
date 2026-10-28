@@ -30,7 +30,41 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookup> {
   }
 
   if (!response.ok) {
-    throw new Error('O CNPJ não foi encontrado na BrasilAPI.')
+    const body = await response.json().catch(() => null)
+    const apiMessage =
+      typeof body === 'object' &&
+      body !== null &&
+      'message' in body &&
+      typeof body.message === 'string'
+        ? body.message
+        : null
+
+    console.error('[lookupCnpj]', {
+      status: response.status,
+      apiMessage,
+    })
+
+    if (response.status === 404) {
+      throw new Error(
+        'A BrasilAPI não encontrou este CNPJ na base da Receita Federal. Confira se o número está correto e se a empresa está ativa.',
+      )
+    }
+
+    if (response.status === 429) {
+      throw new Error(
+        'A BrasilAPI atingiu o limite de consultas. Aguarde alguns minutos e tente novamente.',
+      )
+    }
+
+    if (response.status >= 500) {
+      throw new Error(
+        'A BrasilAPI está indisponível agora. Tente novamente em instantes.',
+      )
+    }
+
+    throw new Error(
+      `A BrasilAPI recusou a consulta (HTTP ${response.status})${apiMessage ? `: ${apiMessage}` : ''}.`,
+    )
   }
 
   const parsed = responseSchema.safeParse(
@@ -41,8 +75,16 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookup> {
     throw new Error('A BrasilAPI retornou dados inesperados para o CNPJ.')
   }
 
+  const returnedCnpj = normalizeCnpj(parsed.data.cnpj)
+
+  if (returnedCnpj !== normalized) {
+    throw new Error(
+      'A BrasilAPI retornou um CNPJ diferente do número consultado.',
+    )
+  }
+
   return {
-    cnpj: normalizeCnpj(parsed.data.cnpj),
+    cnpj: returnedCnpj,
     legalName: parsed.data.razao_social,
   }
 }
