@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCpf } from '@/lib/formatters'
 import { requireSession } from '@/lib/session'
 import { getProfile } from '@/modules/identity/profile.server'
+import { EmailChangeForm } from './components/email-change-form'
 import { ProfileForm } from './components/profile-form'
 
 export const metadata: Metadata = {
@@ -71,6 +72,10 @@ async function ProfileContent() {
 
       <section className="rounded-lg border bg-background p-6">
         <ProfileForm name={profile.name} phone={profile.phone} />
+      </section>
+
+      <section className="rounded-lg border bg-background p-6">
+        <EmailChangeForm />
       </section>
     </main>
   )
