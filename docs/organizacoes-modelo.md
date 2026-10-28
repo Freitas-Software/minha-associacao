@@ -1,6 +1,6 @@
 # Modelo de domínio — organizações, cargos, permissões e convites
 
-**Status:** aprovado para implementação em 27/10/2026. As três primeiras decisões foram confirmadas; as demais permanecem pendentes.
+**Status:** aprovado para implementação em 27/10/2026. As decisões da seção 8.1 estão confirmadas; as da seção 8.2 permanecem pendentes.
 
 Este documento registra o modelo aprovado e as decisões ainda abertas. Ele **não substitui** [regras-de-negocio.md](regras-de-negocio.md); onde houver divergência, prevalecem as regras de negócio e a decisão explícita do responsável pelo produto.
 
@@ -224,7 +224,7 @@ Autoridade separada dos cargos de associação.
 - `created_at` timestamptz.
 - `revoked_at` timestamptz.
 
-Inicialmente, apenas o responsável pelo aplicativo. Intervenções devem gerar evento de auditoria.
+Inicialmente, apenas o responsável pelo aplicativo. Intervenções devem gerar evento de auditoria. Essa autoridade não concede acesso implícito a dados ou operações internas da organização; os poderes são apenas os registrados em 8.1.
 
 ### 3.12 `audit_events`
 
@@ -373,17 +373,17 @@ Regras de decisão:
 4. O pré-cadastro por operador reutiliza `registration_requests` com organização, cargo e operador; o operador escolhe o cargo inicial e a ativação cria o vínculo.
 5. O titular escolhe o contato a manter ao concluir a conta; a escolha encerra as divergências registradas.
 6. Convites individuais expiram em 7 dias e têm 1 uso; compartilhados expiram em 30 dias com limite definido pelo operador. O reenvio invalida o link anterior e respeita 60 segundos.
+7. O administrador da plataforma pode criar organização com dados básicos, analisar solicitações (consultar a ata e aprovar ou rejeitar com motivo) e listar organizações. Não acessa membros, convites, cargos, configurações, auditoria ou outras operações internas sem vínculo ativo; não ativa organização, não altera vínculos, não exclui organização e não se passa por usuário. Intervenções são auditadas e novos poderes exigem decisão explícita.
 
 ### 8.2 Pendentes
 
 Estas decisões bloqueiam partes do modelo e não devem ser resolvidas por suposição:
 
-1. Quais são os limites dos poderes do administrador da plataforma além do cadastro básico?
-2. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
-3. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
-4. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
-5. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
-6. Qual é o formato de auditoria exigido para intervenções da plataforma?
+1. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
+2. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
+3. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
+4. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
+5. Qual é o formato de auditoria exigido para intervenções da plataforma?
 
 ## 9. Riscos e cuidados
 
