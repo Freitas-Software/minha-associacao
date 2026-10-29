@@ -13,7 +13,6 @@ import {
 import { FormMessage } from '@/components/ui/form-message'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { PERMISSION_CATALOG } from '@/modules/authorization/permissions'
 import { initialOrganizationActionState } from '@/modules/organizations/organization-action-state'
 import { createRoleAction, updateRoleAction } from '../../../actions'
 
@@ -31,9 +30,17 @@ type RoleFormProps = {
   organizationId: string
   mode: 'create' | 'edit'
   role?: RoleFormRole
+  permissions: ReadonlyArray<{ code: string; description: string }>
+  canGrantFullAccess: boolean
 }
 
-export function RoleForm({ organizationId, mode, role }: RoleFormProps) {
+export function RoleForm({
+  organizationId,
+  mode,
+  role,
+  permissions,
+  canGrantFullAccess,
+}: RoleFormProps) {
   const editing = mode === 'edit' && role !== undefined
   const formRef = useRef<HTMLFormElement>(null)
   const [state, formAction, pending] = useActionState(
@@ -113,27 +120,29 @@ export function RoleForm({ organizationId, mode, role }: RoleFormProps) {
               </span>
             </label>
 
-            <label
-              htmlFor="role-full-access"
-              className="flex cursor-pointer items-start gap-3 text-sm"
-            >
-              <input
-                id="role-full-access"
-                type="checkbox"
-                name="hasFullAccess"
-                checked={hasFullAccess}
-                onChange={event =>
-                  setHasFullAccess(event.currentTarget.checked)
-                }
-                className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              />
-              <span>
-                Acesso completo
-                <span className="block text-xs text-muted-foreground">
-                  Inclui todas as permissões configuráveis atuais e futuras.
+            {canGrantFullAccess ? (
+              <label
+                htmlFor="role-full-access"
+                className="flex cursor-pointer items-start gap-3 text-sm"
+              >
+                <input
+                  id="role-full-access"
+                  type="checkbox"
+                  name="hasFullAccess"
+                  checked={hasFullAccess}
+                  onChange={event =>
+                    setHasFullAccess(event.currentTarget.checked)
+                  }
+                  className="mt-1 size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                />
+                <span>
+                  Acesso completo
+                  <span className="block text-xs text-muted-foreground">
+                    Inclui todas as permissões configuráveis atuais e futuras.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            ) : null}
 
             <label
               htmlFor="role-default"
@@ -189,7 +198,7 @@ export function RoleForm({ organizationId, mode, role }: RoleFormProps) {
             </FieldDescription>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              {PERMISSION_CATALOG.map(permission => (
+              {permissions.map(permission => (
                 <label
                   key={permission.code}
                   htmlFor={`permission-${permission.code}`}
@@ -209,6 +218,12 @@ export function RoleForm({ organizationId, mode, role }: RoleFormProps) {
                 </label>
               ))}
             </div>
+
+            {permissions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Você não possui permissões configuráveis para conceder.
+              </p>
+            ) : null}
           </FieldSet>
         </FieldGroup>
 

@@ -12,6 +12,7 @@ import {
 } from '@/db/schema'
 import { sendEmail } from '@/lib/email'
 import {
+  canGrantRole,
   getOrganizationAccess,
   hasPermission,
 } from '@/modules/authorization/authorize.server'
@@ -96,7 +97,7 @@ export async function createPreRegistrationLink(
 
   if (!role?.isActive) return { status: 'invalid-role' }
 
-  if (role.hasFullAccess && !access.hasFullAccess) {
+  if (!(await canGrantRole(access, role, database))) {
     return { status: 'role-not-allowed' }
   }
 

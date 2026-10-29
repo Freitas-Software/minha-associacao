@@ -123,6 +123,12 @@ export async function createInviteAction(
           status: 'error',
           message: 'Selecione um cargo válido para este tipo de convite.',
         }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você só pode conceder cargos com permissões que você possui.',
+        }
       case 'invalid-document':
         return { status: 'error', message: 'Informe um CPF válido.' }
       case 'invalid-expiry':
@@ -317,6 +323,17 @@ export async function createRoleAction(
         return {
           status: 'error',
           message: 'Uma das permissões selecionadas é inválida.',
+        }
+      case 'full-access-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Somente quem tem acesso completo pode conceder acesso completo.',
+        }
+      case 'permission-not-allowed':
+        return {
+          status: 'error',
+          message: 'Você só pode conceder permissões que você mesmo possui.',
         }
       case 'default-role-exists':
         return {
@@ -753,6 +770,18 @@ export async function updateRoleAction(
           status: 'error',
           message: 'Uma das permissões selecionadas é inválida.',
         }
+      case 'full-access-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Somente quem tem acesso completo pode gerenciar ou conceder acesso completo.',
+        }
+      case 'permission-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você só pode gerenciar cargos com permissões que você mesmo possui.',
+        }
       case 'default-role-exists':
         return {
           status: 'error',
@@ -1158,6 +1187,12 @@ export async function resendInviteAction(
         return {
           status: 'error',
           message: 'O cargo deste convite não está mais disponível.',
+        }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você só pode reenviar convites para cargos com permissões que você possui.',
         }
     }
 

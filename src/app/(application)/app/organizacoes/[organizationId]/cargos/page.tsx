@@ -48,9 +48,29 @@ async function RolesContent({ params }: RolesPageProps) {
 
   if (summary.status !== 'ok' || rolesData.status !== 'ok') notFound()
 
+  const access = summary.access
+
   const canManage =
-    summary.access.hasFullAccess ||
-    summary.access.permissions.includes(PERMISSIONS.rolesManage)
+    access.hasFullAccess || access.permissions.includes(PERMISSIONS.rolesManage)
+
+  const grantablePermissions = access.hasFullAccess
+    ? PERMISSION_CATALOG
+    : PERMISSION_CATALOG.filter(permission =>
+        access.permissions.includes(permission.code),
+      )
+
+  function canManageRole(role: {
+    hasFullAccess: boolean
+    permissionCodes: string[]
+  }): boolean {
+    if (!canManage) return false
+    if (access.hasFullAccess) return true
+
+    return (
+      !role.hasFullAccess &&
+      role.permissionCodes.every(code => access.permissions.includes(code))
+    )
+  }
 
   return (
     <main className="space-y-10">
@@ -71,7 +91,12 @@ async function RolesContent({ params }: RolesPageProps) {
 
       {canManage ? (
         <section className="rounded-lg border bg-background p-6">
-          <RoleForm organizationId={summary.organization.id} mode="create" />
+          <RoleForm
+            organizationId={summary.organization.id}
+            mode="create"
+            permissions={grantablePermissions}
+            canGrantFullAccess={summary.access.hasFullAccess}
+          />
         </section>
       ) : null}
 
@@ -108,7 +133,7 @@ async function RolesContent({ params }: RolesPageProps) {
                     ) : null}
                   </div>
 
-                  {canManage ? (
+                  {canManageRole(role) ? (
                     <Link
                       href={`/app/organizacoes/${summary.organization.id}/cargos/${role.id}`}
                       className="text-sm underline underline-offset-4"

@@ -112,6 +112,21 @@ test('organization domain on PostgreSQL, using temporary tables', {
         updated_at timestamptz DEFAULT now() NOT NULL,
         CONSTRAINT memberships_organization_id_user_id_unique UNIQUE (organization_id, user_id)
       );
+      CREATE TEMP TABLE invites (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        role_id uuid,
+        type varchar(20) NOT NULL,
+        document_number varchar(11),
+        token_hash varchar(64) NOT NULL UNIQUE,
+        max_uses integer,
+        uses_count integer DEFAULT 0 NOT NULL,
+        expires_at timestamptz NOT NULL,
+        revoked_at timestamptz,
+        created_by_user_id uuid NOT NULL,
+        created_by_membership_id uuid,
+        created_at timestamptz DEFAULT now() NOT NULL
+      );
       CREATE TEMP TABLE audit_events (
         id uuid PRIMARY KEY,
         actor_user_id uuid,
@@ -248,7 +263,8 @@ test('organization domain on PostgreSQL, using temporary tables', {
       await pool.query(
         `TRUNCATE pg_temp.users, pg_temp.organizations, pg_temp.platform_admins,
           pg_temp.roles, pg_temp.role_permissions, pg_temp.memberships,
-          pg_temp.audit_events, pg_temp.registration_requests`,
+          pg_temp.invites, pg_temp.audit_events,
+          pg_temp.registration_requests`,
       )
     }
 
@@ -445,6 +461,186 @@ test('organization domain on PostgreSQL, using temporary tables', {
       },
     )
 
+    await t.test('prevents granting authority beyond the actor', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const managerId = await createUser('manager')
+      const memberId = await createUser('member')
+      const organizationId = await createOrganizationRow(presidentId)
+      const presidentRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const associateRoleId = await createRoleRow(organizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+      const managerRoleId = await createRoleRow(organizationId, {
+        name: 'Gestor',
+      })
+
+      await pool.query(
+        `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+           VALUES ($1, $2), ($1, $3)`,
+        [managerRoleId, PERMISSIONS.rolesManage, PERMISSIONS.membersManage],
+      )
+
+      await createMembershipRow(organizationId, presidentId, presidentRoleId)
+      await createMembershipRow(organizationId, managerId, managerRoleId)
+      const memberMembershipId = await createMembershipRow(
+        organizationId,
+        memberId,
+        associateRoleId,
+      )
+
+      assert.deepEqual(
+        await createRole(
+          {
+            actorUserId: managerId,
+            organizationId,
+            role: {
+              name: 'Vice-presidente',
+              isDirector: false,
+              hasFullAccess: true,
+              isDefault: false,
+              permissionCodes: [],
+            },
+          },
+          database,
+        ),
+        { status: 'full-access-not-allowed' },
+      )
+
+      assert.deepEqual(
+        await createRole(
+          {
+            actorUserId: managerId,
+            organizationId,
+            role: {
+              name: 'Auditor',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: false,
+              permissionCodes: [PERMISSIONS.auditRead],
+            },
+          },
+          database,
+        ),
+        { status: 'permission-not-allowed' },
+      )
+
+      const managerCreatedRole = await createRole(
+        {
+          actorUserId: managerId,
+          organizationId,
+          role: {
+            name: 'Apoio',
+            isDirector: false,
+            hasFullAccess: false,
+            isDefault: false,
+            permissionCodes: [PERMISSIONS.rolesManage],
+          },
+        },
+        database,
+      )
+
+      assert.equal(managerCreatedRole.status, 'created')
+
+      if (managerCreatedRole.status !== 'created') {
+        throw new Error('Expected role creation')
+      }
+
+      assert.deepEqual(
+        await updateRole(
+          {
+            actorUserId: managerId,
+            organizationId,
+            roleId: presidentRoleId,
+            role: {
+              name: 'Presidente',
+              isDirector: false,
+              hasFullAccess: true,
+              isDefault: false,
+              isActive: true,
+              permissionCodes: [],
+            },
+          },
+          database,
+        ),
+        { status: 'full-access-not-allowed' },
+      )
+
+      const auditorRole = await createRole(
+        {
+          actorUserId: presidentId,
+          organizationId,
+          role: {
+            name: 'Auditor',
+            isDirector: false,
+            hasFullAccess: false,
+            isDefault: false,
+            permissionCodes: [PERMISSIONS.auditRead],
+          },
+        },
+        database,
+      )
+
+      assert.equal(auditorRole.status, 'created')
+
+      if (auditorRole.status !== 'created') {
+        throw new Error('Expected role creation')
+      }
+
+      assert.deepEqual(
+        await updateRole(
+          {
+            actorUserId: managerId,
+            organizationId,
+            roleId: auditorRole.roleId,
+            role: {
+              name: 'Auditor',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: false,
+              isActive: true,
+              permissionCodes: [PERMISSIONS.auditRead],
+            },
+          },
+          database,
+        ),
+        { status: 'permission-not-allowed' },
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: managerId,
+            membershipId: memberMembershipId,
+            roleId: auditorRole.roleId,
+          },
+          database,
+        ),
+        { status: 'role-not-allowed' },
+      )
+
+      const assignable = await listAssignableRoles(
+        managerId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(assignable.status, 'ok')
+
+      if (assignable.status !== 'ok') throw new Error('Expected roles')
+
+      assert.deepEqual(assignable.roles.map(role => role.name).sort(), [
+        'Apoio',
+        'Associado',
+        'Gestor',
+      ])
+    })
+
     await t.test(
       'activates the organization only with valid invariants',
       async () => {
@@ -487,6 +683,121 @@ test('organization domain on PostgreSQL, using temporary tables', {
         assert.deepEqual(
           await activateOrganization(presidentId, organizationId, database),
           { status: 'already-active' },
+        )
+      },
+    )
+
+    await t.test(
+      'accepts a valid individual invite for a director role at activation',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const organizationId = await createOrganizationRow(presidentId)
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+        await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+        const directorRoleId = await createRoleRow(organizationId, {
+          name: 'Tesoureiro',
+          isDirector: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+
+        async function insertDirectorInvite(input: {
+          expiresAt: string
+          revoked?: boolean
+          usesCount?: number
+        }) {
+          await pool.query(
+            `INSERT INTO pg_temp.invites
+              (id, organization_id, role_id, type, document_number, token_hash,
+               max_uses, uses_count, expires_at, revoked_at, created_by_user_id)
+             VALUES ($1, $2, $3, 'individual', '12345678901', $4, 1, $5,
+               now() + $6::interval,
+               case when $7 then now() else null end, $8)`,
+            [
+              randomUUID(),
+              organizationId,
+              directorRoleId,
+              `token-${randomUUID()}`,
+              input.usesCount ?? 0,
+              input.expiresAt,
+              input.revoked ?? false,
+              presidentId,
+            ],
+          )
+        }
+
+        await insertDirectorInvite({ expiresAt: '1 day', revoked: true })
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'missing-director-occupant' },
+        )
+
+        await pool.query('DELETE FROM pg_temp.invites')
+
+        await insertDirectorInvite({ expiresAt: '1 day' })
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'activated' },
+        )
+
+        await reset()
+
+        const secondPresidentId = await createUser('second-president')
+        const secondOrganizationId =
+          await createOrganizationRow(secondPresidentId)
+        const secondPresidentRoleId = await createRoleRow(
+          secondOrganizationId,
+          {
+            name: 'Presidente',
+            hasFullAccess: true,
+          },
+        )
+        await createRoleRow(secondOrganizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+        const secondDirectorRoleId = await createRoleRow(secondOrganizationId, {
+          name: 'Tesoureiro',
+          isDirector: true,
+        })
+        await createMembershipRow(
+          secondOrganizationId,
+          secondPresidentId,
+          secondPresidentRoleId,
+        )
+
+        await pool.query(
+          `INSERT INTO pg_temp.invites
+            (id, organization_id, role_id, type, document_number, token_hash,
+             max_uses, uses_count, expires_at, created_by_user_id)
+           VALUES ($1, $2, $3, 'individual', '12345678901', $4, 1, 0,
+             now() - interval '1 day', $5)`,
+          [
+            randomUUID(),
+            secondOrganizationId,
+            secondDirectorRoleId,
+            `token-${randomUUID()}`,
+            secondPresidentId,
+          ],
+        )
+
+        assert.deepEqual(
+          await activateOrganization(
+            secondPresidentId,
+            secondOrganizationId,
+            database,
+          ),
+          { status: 'missing-director-occupant' },
         )
       },
     )

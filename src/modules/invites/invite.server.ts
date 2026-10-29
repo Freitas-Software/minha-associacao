@@ -19,12 +19,15 @@ import {
   invites,
   memberships,
   organizations,
+  rolePermissions,
   roles,
   users,
 } from '@/db/schema'
 import { recordAuditEvent } from '@/modules/audit/audit.server'
 import {
+  canGrantRole,
   getOrganizationAccess,
+  hasEveryPermission,
   hasPermission,
 } from '@/modules/authorization/authorize.server'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
@@ -51,6 +54,7 @@ export type CreateInviteResult =
   | { status: 'created'; inviteId: string; token: string }
   | { status: 'forbidden' }
   | { status: 'invalid-role' }
+  | { status: 'role-not-allowed' }
   | { status: 'invalid-document' }
   | { status: 'invalid-expiry' }
   | { status: 'invalid-max-uses' }
@@ -133,6 +137,28 @@ export async function createInvite(
     return { status: 'invalid-role' }
   }
 
+  let roleToGrant: { id: string; hasFullAccess: boolean } | null = role
+
+  if (!input.roleId && input.type === 'shared') {
+    const [defaultRole] = await database
+      .select({ id: roles.id, hasFullAccess: roles.hasFullAccess })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.organizationId, input.organizationId),
+          eq(roles.isDefault, true),
+          eq(roles.isActive, true),
+        ),
+      )
+      .limit(1)
+
+    roleToGrant = defaultRole ?? null
+  }
+
+  if (roleToGrant && !(await canGrantRole(access, roleToGrant, database))) {
+    return { status: 'role-not-allowed' }
+  }
+
   const generated = createInviteToken()
 
   return database.transaction(async tx => {
@@ -183,6 +209,7 @@ export type ResendInviteResult =
   | { status: 'already-revoked' }
   | { status: 'rate-limited' }
   | { status: 'invalid-role' }
+  | { status: 'role-not-allowed' }
 
 export async function resendInvite(
   input: {
@@ -229,6 +256,7 @@ export async function resendInvite(
   if (invite.roleId) {
     const [role] = await database
       .select({
+        id: roles.id,
         isDirector: roles.isDirector,
         hasFullAccess: roles.hasFullAccess,
       })
@@ -245,6 +273,27 @@ export async function resendInvite(
     if (!role) return { status: 'invalid-role' }
     if (invite.type === 'shared' && (role.isDirector || role.hasFullAccess)) {
       return { status: 'invalid-role' }
+    }
+    if (!(await canGrantRole(access, role, database))) {
+      return { status: 'role-not-allowed' }
+    }
+  }
+
+  if (!invite.roleId && invite.type === 'shared') {
+    const [defaultRole] = await database
+      .select({ id: roles.id, hasFullAccess: roles.hasFullAccess })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.organizationId, invite.organizationId),
+          eq(roles.isDefault, true),
+          eq(roles.isActive, true),
+        ),
+      )
+      .limit(1)
+
+    if (defaultRole && !(await canGrantRole(access, defaultRole, database))) {
+      return { status: 'role-not-allowed' }
     }
   }
 
@@ -754,6 +803,26 @@ export async function getInviteManagementData(
     )
     .orderBy(roles.name)
 
+  const permissionRows = await database
+    .select({
+      roleId: rolePermissions.roleId,
+      code: rolePermissions.permissionCode,
+    })
+    .from(rolePermissions)
+    .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+    .where(eq(roles.organizationId, organizationId))
+
+  const grantableRoleRows = roleRows.filter(role => {
+    if (!access.hasFullAccess && role.hasFullAccess) return false
+
+    return hasEveryPermission(
+      access,
+      permissionRows
+        .filter(permission => permission.roleId === role.id)
+        .map(permission => permission.code),
+    )
+  })
+
   const now = new Date()
   const search = options.query?.trim()
   const documentDigits = search?.replaceAll(/\D/g, '') ?? ''
@@ -826,7 +895,7 @@ export async function getInviteManagementData(
   return {
     status: 'ok',
     organization,
-    roles: roleRows,
+    roles: grantableRoleRows,
     invites: inviteRows.map(invite => ({
       ...invite,
       type: invite.type as InviteType,

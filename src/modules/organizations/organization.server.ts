@@ -13,7 +13,9 @@ import {
 import { getDatabaseErrorConstraint, isDatabaseError } from '@/lib/errors'
 import { recordAuditEvent } from '@/modules/audit/audit.server'
 import {
+  canGrantRole,
   getOrganizationAccess,
+  hasEveryPermission,
   hasPermission,
   isPlatformAdmin,
 } from '@/modules/authorization/authorize.server'
@@ -159,6 +161,8 @@ export type CreateRoleResult =
   | { status: 'forbidden' }
   | { status: 'invalid-default-role' }
   | { status: 'invalid-permission' }
+  | { status: 'full-access-not-allowed' }
+  | { status: 'permission-not-allowed' }
   | { status: 'default-role-exists' }
   | { status: 'role-name-exists' }
 
@@ -191,6 +195,14 @@ export async function createRole(
 
   if (input.role.permissionCodes.some(code => !knownPermissions.has(code))) {
     return { status: 'invalid-permission' }
+  }
+
+  if (input.role.hasFullAccess && !access.hasFullAccess) {
+    return { status: 'full-access-not-allowed' }
+  }
+
+  if (!hasEveryPermission(access, input.role.permissionCodes)) {
+    return { status: 'permission-not-allowed' }
   }
 
   try {
@@ -347,10 +359,26 @@ export async function activateOrganization(
         ),
       )
 
+    const now = new Date()
+
+    const validDirectorInvites = await tx
+      .select({ roleId: invites.roleId })
+      .from(invites)
+      .where(
+        and(
+          eq(invites.organizationId, organizationId),
+          eq(invites.type, 'individual'),
+          isNull(invites.revokedAt),
+          gt(invites.expiresAt, now),
+          or(isNull(invites.maxUses), lt(invites.usesCount, invites.maxUses)),
+        ),
+      )
+
     const directorRolesWithoutOccupant = activeRoles.filter(
       role =>
         role.isDirector &&
-        !activeMembers.some(member => member.roleId === role.id),
+        !activeMembers.some(member => member.roleId === role.id) &&
+        !validDirectorInvites.some(invite => invite.roleId === role.id),
     )
 
     if (directorRolesWithoutOccupant.length > 0) {
@@ -360,8 +388,6 @@ export async function activateOrganization(
     if (!activeMembers.some(member => member.hasFullAccess)) {
       return { status: 'missing-full-access-member' as const }
     }
-
-    const now = new Date()
 
     await tx
       .update(organizations)
@@ -729,6 +755,8 @@ export type UpdateRoleResult =
   | { status: 'not-found' }
   | { status: 'invalid-default-role' }
   | { status: 'invalid-permission' }
+  | { status: 'full-access-not-allowed' }
+  | { status: 'permission-not-allowed' }
   | { status: 'default-role-exists' }
   | { status: 'role-name-exists' }
   | { status: 'role-in-use' }
@@ -782,6 +810,22 @@ export async function updateRole(
         .for('update')
 
       if (!role) return { status: 'not-found' as const }
+
+      if (role.hasFullAccess && !access.hasFullAccess) {
+        return { status: 'full-access-not-allowed' as const }
+      }
+
+      if (!(await canGrantRole(access, role, tx))) {
+        return { status: 'permission-not-allowed' as const }
+      }
+
+      if (input.role.hasFullAccess && !access.hasFullAccess) {
+        return { status: 'full-access-not-allowed' as const }
+      }
+
+      if (!hasEveryPermission(access, input.role.permissionCodes)) {
+        return { status: 'permission-not-allowed' as const }
+      }
 
       const now = new Date()
       const deactivating = role.isActive && !input.role.isActive
@@ -1000,11 +1044,27 @@ export async function listAssignableRoles(
     )
     .orderBy(roles.name)
 
+  const permissionRows = await database
+    .select({
+      roleId: rolePermissions.roleId,
+      code: rolePermissions.permissionCode,
+    })
+    .from(rolePermissions)
+    .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+    .where(eq(roles.organizationId, organizationId))
+
   return {
     status: 'ok',
-    roles: access.hasFullAccess
-      ? rows
-      : rows.filter(role => !role.hasFullAccess),
+    roles: rows.filter(role => {
+      if (!access.hasFullAccess && role.hasFullAccess) return false
+
+      return hasEveryPermission(
+        access,
+        permissionRows
+          .filter(permission => permission.roleId === role.id)
+          .map(permission => permission.code),
+      )
+    }),
   }
 }
 
@@ -1102,7 +1162,7 @@ export async function updateMembershipRole(
       return { status: 'unchanged' as const }
     }
 
-    if (newRole.hasFullAccess && !access.hasFullAccess) {
+    if (!(await canGrantRole(access, newRole, tx))) {
       return { status: 'role-not-allowed' as const }
     }
 

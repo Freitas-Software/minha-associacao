@@ -113,8 +113,9 @@ export function CreateInviteForm({
               <option value="shared">Compartilhado</option>
             </select>
             <FieldDescription id="invite-type-description">
-              O convite individual pode indicar qualquer cargo. O compartilhado
-              não pode conceder diretoria nem acesso completo.
+              O convite individual pode indicar qualquer cargo que você tenha
+              autoridade para conceder. O compartilhado não pode conceder
+              diretoria nem acesso completo.
             </FieldDescription>
           </Field>
 

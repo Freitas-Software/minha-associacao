@@ -84,6 +84,38 @@ export function hasPermission(
   return access.hasFullAccess || access.permissions.has(permission)
 }
 
+export function hasEveryPermission(
+  access: OrganizationAccess,
+  permissions: readonly string[],
+): boolean {
+  return (
+    access.hasFullAccess ||
+    permissions.every(permission =>
+      access.permissions.has(permission as PermissionCode),
+    )
+  )
+}
+
+type RoleAuthorityDatabase = Pick<typeof db, 'select'>
+
+export async function canGrantRole(
+  access: OrganizationAccess,
+  role: { id: string; hasFullAccess: boolean },
+  database: RoleAuthorityDatabase = db,
+): Promise<boolean> {
+  if (role.hasFullAccess) return access.hasFullAccess
+
+  const permissions = await database
+    .select({ code: rolePermissions.permissionCode })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, role.id))
+
+  return hasEveryPermission(
+    access,
+    permissions.map(permission => permission.code),
+  )
+}
+
 export async function isPlatformAdmin(
   userId: string,
   database: typeof db = db,

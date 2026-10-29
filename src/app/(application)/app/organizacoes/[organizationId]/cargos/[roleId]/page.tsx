@@ -4,7 +4,10 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { requireSession } from '@/lib/session'
-import { PERMISSIONS } from '@/modules/authorization/permissions'
+import {
+  PERMISSION_CATALOG,
+  PERMISSIONS,
+} from '@/modules/authorization/permissions'
 import {
   getOrganizationSummary,
   listRoles,
@@ -40,6 +43,21 @@ async function EditRoleContent({ params }: EditRolePageProps) {
 
   if (!canManage || !role) notFound()
 
+  const canManageRole =
+    summary.access.hasFullAccess ||
+    (!role.hasFullAccess &&
+      role.permissionCodes.every(code =>
+        summary.access.permissions.includes(code),
+      ))
+
+  if (!canManageRole) notFound()
+
+  const grantablePermissions = summary.access.hasFullAccess
+    ? PERMISSION_CATALOG
+    : PERMISSION_CATALOG.filter(permission =>
+        summary.access.permissions.includes(permission.code),
+      )
+
   return (
     <main className="space-y-8">
       <header className="space-y-2">
@@ -60,6 +78,8 @@ async function EditRoleContent({ params }: EditRolePageProps) {
           organizationId={summary.organization.id}
           mode="edit"
           role={role}
+          permissions={grantablePermissions}
+          canGrantFullAccess={summary.access.hasFullAccess}
         />
       </section>
     </main>

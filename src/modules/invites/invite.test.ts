@@ -113,6 +113,11 @@ test('invite domain on PostgreSQL, using temporary tables', {
         membership_id uuid NOT NULL,
         redeemed_at timestamptz DEFAULT now() NOT NULL
       );
+      CREATE TEMP TABLE role_permissions (
+        role_id uuid NOT NULL,
+        permission_code varchar(100) NOT NULL,
+        PRIMARY KEY (role_id, permission_code)
+      );
       CREATE TEMP TABLE audit_events (
         id uuid PRIMARY KEY,
         actor_user_id uuid,
@@ -681,6 +686,142 @@ test('invite domain on PostgreSQL, using temporary tables', {
         { status: 'forbidden' },
       )
     })
+    await t.test(
+      'prevents granting invite roles beyond the actor',
+      async () => {
+        const managerId = await createUser('invite-manager')
+        const inviteeId = await createUser('privileged-invitee')
+        const managerRoleId = await createRole(organizationId, {
+          name: 'Gestor de convites',
+        })
+        const privilegedRoleId = await createRole(organizationId, {
+          name: 'Auditor',
+        })
+
+        await createMembership(organizationId, managerId, managerRoleId)
+        await pool.query(
+          `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+           VALUES ($1, 'invites.manage'), ($2, 'audit.read')`,
+          [managerRoleId, privilegedRoleId],
+        )
+
+        const documentNumber = await getDocument(inviteeId)
+        const expiresAt = new Date(Date.now() + DAY_MS)
+
+        assert.deepEqual(
+          await createInvite(
+            {
+              actorUserId: managerId,
+              organizationId,
+              type: 'individual',
+              roleId: fullAccessRoleId,
+              documentNumber,
+              expiresAt,
+            },
+            database,
+          ),
+          { status: 'role-not-allowed' },
+        )
+
+        assert.deepEqual(
+          await createInvite(
+            {
+              actorUserId: managerId,
+              organizationId,
+              type: 'individual',
+              roleId: privilegedRoleId,
+              documentNumber,
+              expiresAt,
+            },
+            database,
+          ),
+          { status: 'role-not-allowed' },
+        )
+
+        const allowed = await createInvite(
+          {
+            actorUserId: managerId,
+            organizationId,
+            type: 'individual',
+            roleId: defaultRoleId,
+            documentNumber,
+            expiresAt,
+          },
+          database,
+        )
+
+        assert.equal(allowed.status, 'created')
+
+        const privilegedInvite = await createInvite(
+          {
+            actorUserId: actorId,
+            organizationId,
+            type: 'individual',
+            roleId: fullAccessRoleId,
+            documentNumber,
+            expiresAt,
+          },
+          database,
+        )
+
+        assert.equal(privilegedInvite.status, 'created')
+
+        if (privilegedInvite.status !== 'created') {
+          throw new Error('Expected invite')
+        }
+
+        await pool.query(
+          "UPDATE pg_temp.invites SET created_at = now() - interval '5 minutes' WHERE id = $1",
+          [privilegedInvite.inviteId],
+        )
+
+        assert.deepEqual(
+          await resendInvite(
+            { actorUserId: managerId, inviteId: privilegedInvite.inviteId },
+            database,
+          ),
+          { status: 'role-not-allowed' },
+        )
+
+        const management = await getInviteManagementData(
+          managerId,
+          organizationId,
+          {},
+          database,
+        )
+
+        assert.equal(management.status, 'ok')
+
+        if (management.status !== 'ok') throw new Error('Expected invites')
+
+        const grantableRoleIds = management.roles.map(role => role.id)
+
+        assert.ok(grantableRoleIds.includes(defaultRoleId))
+        assert.ok(grantableRoleIds.includes(managerRoleId))
+        assert.ok(!grantableRoleIds.includes(fullAccessRoleId))
+        assert.ok(!grantableRoleIds.includes(privilegedRoleId))
+
+        await pool.query(
+          `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+           VALUES ($1, 'audit.read')`,
+          [defaultRoleId],
+        )
+
+        assert.deepEqual(
+          await createInvite(
+            {
+              actorUserId: managerId,
+              organizationId,
+              type: 'shared',
+              roleId: null,
+              expiresAt,
+            },
+            database,
+          ),
+          { status: 'role-not-allowed' },
+        )
+      },
+    )
   } finally {
     await pool.end()
   }
