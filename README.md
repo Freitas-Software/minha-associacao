@@ -173,6 +173,7 @@ Antes de publicar uma alteração de schema:
 - Banco: Neon PostgreSQL.
 - Domínio: `https://www.associae.com.br` (o apex redireciona para `www`).
 - Cron: `/api/cron/cleanup`, diariamente às 03:00, protegido por `CRON_SECRET`.
+- Blob: store privado `associae-documents` em `gru1`, conectado ao projeto; `BLOB_READ_WRITE_TOKEN` é gerenciado pela Vercel.
 - Emails: domínio verificado no Resend e remetente em `EMAIL_FROM`.
 - O primeiro administrador da plataforma precisa ser concedido manualmente com `pnpm platform-admin:grant <email>`; essa conta deve existir antes.
 
