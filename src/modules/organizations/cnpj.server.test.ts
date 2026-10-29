@@ -21,6 +21,7 @@ test('lookupCnpj sends a descriptive User-Agent', async t => {
         JSON.stringify({
           cnpj: NORMALIZED,
           razao_social: 'ASSOCIACAO TESTE',
+          cnae_fiscal: 9430800,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
@@ -33,6 +34,7 @@ test('lookupCnpj sends a descriptive User-Agent', async t => {
     assert.deepEqual(result, {
       cnpj: NORMALIZED,
       legalName: 'ASSOCIACAO TESTE',
+      cnaeFiscal: '9430800',
     })
 
     const headers = captured?.headers as Record<string, string>
@@ -76,5 +78,27 @@ test('lookupCnpj maps rate limiting and provider errors', async t => {
     } finally {
       mock.mock.restore()
     }
+  }
+})
+
+test('lookupCnpj rejects a CNPJ outside the association CNAE group', async t => {
+  const mock = t.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(
+        JSON.stringify({
+          cnpj: NORMALIZED,
+          razao_social: 'EMPRESA TESTE',
+          cnae_fiscal: 6201500,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+  )
+
+  try {
+    await assert.rejects(() => lookupCnpj(CNPJ), /grupo 94/)
+  } finally {
+    mock.mock.restore()
   }
 })

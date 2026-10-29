@@ -8,6 +8,7 @@ import { formatCnpj } from '@/lib/formatters'
 import { requireSession } from '@/lib/session'
 import { isPlatformAdmin } from '@/modules/authorization/authorize.server'
 import { listAdminOrganizations } from '@/modules/organizations/organization.server'
+import { CreateOrganizationForm } from './components/create-organization-form'
 
 export const metadata: Metadata = {
   title: 'Organizações da plataforma',
@@ -108,9 +109,14 @@ async function AdminOrganizationsContent({
           Organizações da plataforma
         </h1>
         <p className="text-sm text-muted-foreground">
-          Visão somente leitura das organizações criadas na plataforma.
+          Crie organizações com dados básicos e acompanhe as organizações
+          criadas na plataforma.
         </p>
       </header>
+
+      <section className="rounded-lg border bg-background p-6">
+        <CreateOrganizationForm />
+      </section>
 
       <nav aria-label="Filtrar organizações" className="flex flex-wrap gap-2">
         {statusTabs.map(tab => {

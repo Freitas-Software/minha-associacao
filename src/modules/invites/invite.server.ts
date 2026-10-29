@@ -813,7 +813,7 @@ export async function getInviteManagementData(
     .where(eq(roles.organizationId, organizationId))
 
   const grantableRoleRows = roleRows.filter(role => {
-    if (!access.hasFullAccess && role.hasFullAccess) return false
+    if (!access.canGrantFullAccess && role.hasFullAccess) return false
 
     return hasEveryPermission(
       access,

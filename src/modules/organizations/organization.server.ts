@@ -4,7 +4,9 @@ import { db } from '@/db'
 import {
   invites,
   memberships,
+  organizationDocuments,
   organizations,
+  provisioningGrants,
   registrationRequests,
   rolePermissions,
   roles,
@@ -23,6 +25,7 @@ import {
   PERMISSION_CODES,
   PERMISSIONS,
 } from '@/modules/authorization/permissions'
+import { cpfSchema } from '@/modules/identity/registration.schema'
 import { isValidCnpj, normalizeCnpj } from './cnpj'
 import { lookupCnpj } from './cnpj.server'
 import type {
@@ -36,16 +39,35 @@ export type CreateOrganizationResult =
   | { status: 'created'; organizationId: string }
   | { status: 'forbidden' }
   | { status: 'invalid-cnpj' }
+  | { status: 'invalid-document' }
+  | { status: 'grantee-not-found' }
   | { status: 'duplicate-cnpj' }
   | { status: 'lookup-failed'; message: string }
 
 export async function createOrganization(
-  input: { actorUserId: string; cnpj: string; acronym: string },
+  input: {
+    actorUserId: string
+    cnpj: string
+    acronym: string
+    granteeDocumentNumber: string
+  },
   database: typeof db = db,
 ): Promise<CreateOrganizationResult> {
   if (!(await isPlatformAdmin(input.actorUserId, database))) {
     return { status: 'forbidden' }
   }
+
+  const granteeDocument = cpfSchema.safeParse(input.granteeDocumentNumber)
+
+  if (!granteeDocument.success) return { status: 'invalid-document' }
+
+  const [grantee] = await database
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.documentNumber, granteeDocument.data))
+    .limit(1)
+
+  if (!grantee) return { status: 'grantee-not-found' }
 
   const cnpj = normalizeCnpj(input.cnpj)
 
@@ -91,13 +113,39 @@ export async function createOrganization(
         throw new Error('A criação da organização não retornou um ID.')
       }
 
+      const [grant] = await tx
+        .insert(provisioningGrants)
+        .values({
+          organizationId: organization.id,
+          userId: grantee.id,
+          createdByUserId: input.actorUserId,
+        })
+        .returning({ id: provisioningGrants.id })
+
+      if (!grant) {
+        throw new Error('A concessão temporária não retornou um ID.')
+      }
+
       await recordAuditEvent(tx, {
         actorUserId: input.actorUserId,
         organizationId: organization.id,
-        action: 'organization.created',
+        action: 'platform.organization_created',
         entityType: 'organization',
         entityId: organization.id,
-        metadata: { cnpj: lookup.cnpj },
+        metadata: {
+          cnpj: lookup.cnpj,
+          cnaeFiscal: lookup.cnaeFiscal,
+          granteeUserId: grantee.id,
+        },
+      })
+
+      await recordAuditEvent(tx, {
+        actorUserId: input.actorUserId,
+        organizationId: organization.id,
+        action: 'platform.provisioning_grant_created',
+        entityType: 'provisioning_grant',
+        entityId: grant.id,
+        metadata: { userId: grantee.id },
       })
 
       return { status: 'created' as const, organizationId: organization.id }
@@ -197,7 +245,7 @@ export async function createRole(
     return { status: 'invalid-permission' }
   }
 
-  if (input.role.hasFullAccess && !access.hasFullAccess) {
+  if (input.role.hasFullAccess && !access.canGrantFullAccess) {
     return { status: 'full-access-not-allowed' }
   }
 
@@ -285,6 +333,7 @@ export type ActivateOrganizationResult =
   | { status: 'missing-full-access-role' }
   | { status: 'missing-director-occupant' }
   | { status: 'missing-full-access-member' }
+  | { status: 'missing-documents' }
 
 export async function activateOrganization(
   actorUserId: string,
@@ -389,10 +438,34 @@ export async function activateOrganization(
       return { status: 'missing-full-access-member' as const }
     }
 
+    const documentRows = await tx
+      .select({ type: organizationDocuments.type })
+      .from(organizationDocuments)
+      .where(eq(organizationDocuments.organizationId, organizationId))
+
+    const documentTypes = new Set(documentRows.map(document => document.type))
+
+    if (
+      !documentTypes.has('statute') ||
+      !documentTypes.has('election_minutes')
+    ) {
+      return { status: 'missing-documents' as const }
+    }
+
     await tx
       .update(organizations)
       .set({ status: 'active', activatedAt: now, updatedAt: now })
       .where(eq(organizations.id, organizationId))
+
+    await tx
+      .update(provisioningGrants)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(provisioningGrants.organizationId, organizationId),
+          isNull(provisioningGrants.revokedAt),
+        ),
+      )
 
     await recordAuditEvent(tx, {
       actorUserId,
@@ -583,7 +656,7 @@ export async function listUserOrganizations(
   userId: string,
   database: typeof db = db,
 ) {
-  return database
+  const membershipRows = await database
     .select({
       id: organizations.id,
       legalName: organizations.legalName,
@@ -608,6 +681,46 @@ export async function listUserOrganizations(
       ),
     )
     .orderBy(organizations.legalName)
+
+  const grantRows = await database
+    .select({
+      id: organizations.id,
+      legalName: organizations.legalName,
+      acronym: organizations.acronym,
+      status: organizations.status,
+    })
+    .from(provisioningGrants)
+    .innerJoin(
+      organizations,
+      eq(organizations.id, provisioningGrants.organizationId),
+    )
+    .where(
+      and(
+        eq(provisioningGrants.userId, userId),
+        isNull(provisioningGrants.revokedAt),
+        eq(organizations.status, 'provisioning'),
+      ),
+    )
+    .orderBy(organizations.legalName)
+
+  const byOrganization = new Map<string, (typeof membershipRows)[number]>()
+
+  for (const organization of membershipRows) {
+    byOrganization.set(organization.id, organization)
+  }
+
+  for (const organization of grantRows) {
+    if (byOrganization.has(organization.id)) continue
+
+    byOrganization.set(organization.id, {
+      ...organization,
+      roleName: 'Acesso temporário de configuração',
+    })
+  }
+
+  return [...byOrganization.values()].sort((first, second) =>
+    first.legalName.localeCompare(second.legalName, 'pt-BR'),
+  )
 }
 
 export type OrganizationSummary =
@@ -621,8 +734,10 @@ export type OrganizationSummary =
         status: 'provisioning' | 'active'
       }
       access: {
-        roleId: string
+        roleId: string | null
         hasFullAccess: boolean
+        canGrantFullAccess: boolean
+        provisioningGrantId: string | null
         permissions: string[]
       }
     }
@@ -662,6 +777,8 @@ export async function getOrganizationSummary(
     access: {
       roleId: access.roleId,
       hasFullAccess: access.hasFullAccess,
+      canGrantFullAccess: access.canGrantFullAccess,
+      provisioningGrantId: access.provisioningGrantId,
       permissions: [...access.permissions],
     },
   }
@@ -811,7 +928,7 @@ export async function updateRole(
 
       if (!role) return { status: 'not-found' as const }
 
-      if (role.hasFullAccess && !access.hasFullAccess) {
+      if (role.hasFullAccess && !access.canGrantFullAccess) {
         return { status: 'full-access-not-allowed' as const }
       }
 
@@ -819,7 +936,7 @@ export async function updateRole(
         return { status: 'permission-not-allowed' as const }
       }
 
-      if (input.role.hasFullAccess && !access.hasFullAccess) {
+      if (input.role.hasFullAccess && !access.canGrantFullAccess) {
         return { status: 'full-access-not-allowed' as const }
       }
 
@@ -840,6 +957,7 @@ export async function updateRole(
             and(
               eq(memberships.organizationId, input.organizationId),
               eq(memberships.roleId, role.id),
+              eq(memberships.status, 'active'),
             ),
           )
           .limit(1)
@@ -1056,7 +1174,7 @@ export async function listAssignableRoles(
   return {
     status: 'ok',
     roles: rows.filter(role => {
-      if (!access.hasFullAccess && role.hasFullAccess) return false
+      if (!access.canGrantFullAccess && role.hasFullAccess) return false
 
       return hasEveryPermission(
         access,

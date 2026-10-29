@@ -66,6 +66,7 @@ A aplicação fica em `http://localhost:3000`.
 | `RESEND_API_KEY` | Chave da API do Resend |
 | `EMAIL_FROM` | Remetente verificado, ex.: `Associae <no-reply@associae.com.br>` |
 | `CRON_SECRET` | Bearer token exigido pela rota de limpeza agendada |
+| `BLOB_READ_WRITE_TOKEN` | Token do Vercel Blob usado nos documentos institucionais |
 | `LOGIN_TRUSTED_IP_HEADER` | Header de IP confiável quando houver proxy reverso |
 
 Nunca versionar `.env.local` ou credenciais reais. Fora do desenvolvimento local, `APP_URL` deve usar HTTPS.
@@ -123,6 +124,8 @@ scripts/               Utilitários operacionais
 
 - `users` representa a pessoa; `accounts` representa as credenciais. Uma pessoa pode existir antes da conta.
 - O CPF é identidade global e não deve gerar duplicatas entre organizações.
+- O CNPJ precisa ter CNAE fiscal no grupo 94 (atividades de associação).
+- A concessão de provisionamento não é vínculo nem cargo e expira na ativação da organização.
 - Toda autorização é verificada no servidor por permissões de cargo e vínculo ativo.
 - Server Actions validam entrada, aplicam regras de negócio e registram auditoria.
 - Cada organização é um limite de isolamento; IDs enviados pelo cliente não são autorização.
@@ -144,7 +147,9 @@ scripts/               Utilitários operacionais
 - Convites individuais e compartilhados, com expiração, limite de usos, reenvio com invalidação do link anterior, filtros, paginação e reativação de vínculo inativo.
 - Pré-cadastro por operador, com escolha de cargo, link de ativação, lista de pendentes, reenvio de link e resolução de contato divergente pelo titular.
 - Painel de solicitações de organização para administradores da plataforma, com pendentes, aprovadas e rejeitadas, busca e paginação.
-- Listagem somente leitura das organizações da plataforma, com filtro por status e paginação.
+- Criação de organização pelo administrador da plataforma com concessão temporária de configuração ao CPF indicado.
+- Listagem das organizações da plataforma, com filtro por status e paginação.
+- Envio obrigatório de estatuto e ata de eleição para ativação, com armazenamento privado no Vercel Blob e download autorizado.
 - Auditoria por organização, com permissão `audit.read`, filtro por evento, paginação e detalhes.
 
 ## Banco de dados e migrações

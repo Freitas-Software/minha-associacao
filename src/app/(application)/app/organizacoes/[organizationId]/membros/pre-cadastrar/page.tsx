@@ -41,7 +41,7 @@ async function PreRegistrationContent({ params }: PreRegistrationPageProps) {
   const roles = rolesData.roles.filter(
     role =>
       role.isActive &&
-      (summary.access.hasFullAccess ||
+      (summary.access.canGrantFullAccess ||
         (!role.hasFullAccess &&
           role.permissionCodes.every(code =>
             summary.access.permissions.includes(code),

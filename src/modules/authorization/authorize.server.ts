@@ -5,18 +5,21 @@ import {
   memberships,
   organizations,
   platformAdmins,
+  provisioningGrants,
   rolePermissions,
   roles,
 } from '@/db/schema'
 import { PERMISSION_CATALOG, type PermissionCode } from './permissions'
 
 export type OrganizationAccess = {
-  membershipId: string
+  membershipId: string | null
+  provisioningGrantId: string | null
   organizationId: string
   userId: string
-  roleId: string
+  roleId: string | null
   organizationStatus: 'provisioning' | 'active'
   hasFullAccess: boolean
+  canGrantFullAccess: boolean
   permissions: ReadonlySet<PermissionCode>
 }
 
@@ -25,13 +28,20 @@ export async function getOrganizationAccess(
   organizationId: string,
   database: typeof db = db,
 ): Promise<OrganizationAccess | null> {
+  const [organization] = await database
+    .select({ status: organizations.status })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1)
+
+  if (!organization) return null
+
   const [row] = await database
     .select({
       membershipId: memberships.id,
       roleId: roles.id,
       roleIsActive: roles.isActive,
       hasFullAccess: roles.hasFullAccess,
-      organizationStatus: organizations.status,
     })
     .from(memberships)
     .innerJoin(
@@ -41,7 +51,6 @@ export async function getOrganizationAccess(
         eq(roles.organizationId, memberships.organizationId),
       ),
     )
-    .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
     .where(
       and(
         eq(memberships.userId, userId),
@@ -51,29 +60,59 @@ export async function getOrganizationAccess(
     )
     .limit(1)
 
-  if (!row?.roleIsActive) return null
+  if (row?.roleIsActive) {
+    let permissions: Set<PermissionCode>
 
-  let permissions: Set<PermissionCode>
+    if (row.hasFullAccess) {
+      permissions = new Set(PERMISSION_CATALOG.map(item => item.code))
+    } else {
+      const rows = await database
+        .select({ code: rolePermissions.permissionCode })
+        .from(rolePermissions)
+        .where(eq(rolePermissions.roleId, row.roleId))
 
-  if (row.hasFullAccess) {
-    permissions = new Set(PERMISSION_CATALOG.map(item => item.code))
-  } else {
-    const rows = await database
-      .select({ code: rolePermissions.permissionCode })
-      .from(rolePermissions)
-      .where(eq(rolePermissions.roleId, row.roleId))
+      permissions = new Set(rows.map(item => item.code as PermissionCode))
+    }
 
-    permissions = new Set(rows.map(item => item.code as PermissionCode))
+    return {
+      membershipId: row.membershipId,
+      provisioningGrantId: null,
+      organizationId,
+      userId,
+      roleId: row.roleId,
+      organizationStatus: organization.status,
+      hasFullAccess: row.hasFullAccess,
+      canGrantFullAccess: row.hasFullAccess,
+      permissions,
+    }
   }
 
+  if (organization.status !== 'provisioning') return null
+
+  const [grant] = await database
+    .select({ id: provisioningGrants.id })
+    .from(provisioningGrants)
+    .where(
+      and(
+        eq(provisioningGrants.organizationId, organizationId),
+        eq(provisioningGrants.userId, userId),
+        isNull(provisioningGrants.revokedAt),
+      ),
+    )
+    .limit(1)
+
+  if (!grant) return null
+
   return {
-    membershipId: row.membershipId,
+    membershipId: null,
+    provisioningGrantId: grant.id,
     organizationId,
     userId,
-    roleId: row.roleId,
-    organizationStatus: row.organizationStatus,
-    hasFullAccess: row.hasFullAccess,
-    permissions,
+    roleId: null,
+    organizationStatus: organization.status,
+    hasFullAccess: false,
+    canGrantFullAccess: true,
+    permissions: new Set(PERMISSION_CATALOG.map(item => item.code)),
   }
 }
 
@@ -103,7 +142,7 @@ export async function canGrantRole(
   role: { id: string; hasFullAccess: boolean },
   database: RoleAuthorityDatabase = db,
 ): Promise<boolean> {
-  if (role.hasFullAccess) return access.hasFullAccess
+  if (role.hasFullAccess) return access.canGrantFullAccess
 
   const permissions = await database
     .select({ code: rolePermissions.permissionCode })

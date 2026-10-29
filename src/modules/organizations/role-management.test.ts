@@ -326,6 +326,61 @@ test('role management on PostgreSQL, using temporary tables', {
       )
     })
 
+    await t.test(
+      'deactivates roles with only inactive memberships or expired invites',
+      async () => {
+        const historicalRoleId = randomUUID()
+        const expiredInviteRoleId = randomUUID()
+
+        await pool.query(
+          `INSERT INTO pg_temp.roles
+            (id, organization_id, name, is_director, has_full_access, is_default, is_active)
+           VALUES ($1, $2, 'Histórico', false, false, false, true),
+             ($3, $2, 'Convite antigo', false, false, false, true)`,
+          [historicalRoleId, organizationId, expiredInviteRoleId],
+        )
+
+        await pool.query(
+          `INSERT INTO pg_temp.memberships (id, organization_id, user_id, role_id, status)
+           VALUES ($1, $2, $3, $4, 'inactive')`,
+          [randomUUID(), organizationId, randomUUID(), historicalRoleId],
+        )
+
+        await pool.query(
+          `INSERT INTO pg_temp.invites
+            (id, organization_id, role_id, expires_at)
+           VALUES ($1, $2, $3, now() - interval '1 day')`,
+          [randomUUID(), organizationId, expiredInviteRoleId],
+        )
+
+        assert.deepEqual(
+          await updateRole(
+            {
+              actorUserId,
+              organizationId,
+              roleId: historicalRoleId,
+              role: role({ name: 'Histórico', isActive: false }),
+            },
+            database,
+          ),
+          { status: 'updated' },
+        )
+
+        assert.deepEqual(
+          await updateRole(
+            {
+              actorUserId,
+              organizationId,
+              roleId: expiredInviteRoleId,
+              role: role({ name: 'Convite antigo', isActive: false }),
+            },
+            database,
+          ),
+          { status: 'updated' },
+        )
+      },
+    )
+
     await t.test('blocks removing the last full-access member', async () => {
       assert.deepEqual(
         await updateRole(

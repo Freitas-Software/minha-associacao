@@ -42,6 +42,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
         JSON.stringify({
           cnpj,
           razao_social: 'ASSOCIACAO SOLICITANTE',
+          cnae_fiscal: 9430800,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )

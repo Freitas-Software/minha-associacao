@@ -27,7 +27,8 @@ async function OrganizationsContent() {
           Minhas organizações
         </h1>
         <p className="text-sm text-muted-foreground">
-          Organizações em que você possui um vínculo ativo.
+          Organizações em que você possui vínculo ativo ou concessão temporária
+          de configuração.
         </p>
         <div className="flex flex-wrap gap-4 text-sm">
           <Link
@@ -56,7 +57,8 @@ async function OrganizationsContent() {
       {organizations.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-background p-6">
           <p className="text-sm text-muted-foreground">
-            Você ainda não participa de nenhuma organização.
+            Você ainda não participa de nenhuma organização e não possui
+            concessão de configuração.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Se você recebeu um convite, abra o link enviado pela organização.

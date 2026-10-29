@@ -44,6 +44,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Somente o presidente da associação ou um membro da administração da plataforma pode iniciar o cadastro de uma organização.
 - CNPJ deve ser validado externamente e não pode identificar organizações duplicadas. A razão social vem da consulta; a sigla pode ser ajustada.
 - O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar a existência do CNPJ. A viabilidade de comprovar o vínculo entre o CPF autenticado e o CNPJ ainda precisa ser verificada.
+- O CNPJ é elegível quando o CNAE fiscal pertence ao grupo 94 (atividades de associação).
 - Enquanto o vínculo CPF/CNPJ não estiver comprovado por fonte confiável, o administrador da plataforma valida a ata de eleição para reconhecer a autoridade do presidente.
 - O presidente solicita a criação da organização informando o CNPJ e a ata de eleição. O administrador da plataforma analisa a ata e aprova ou rejeita a solicitação.
 - Na aprovação, a organização é criada em PROVISIONING com um cargo padrão de ingresso, um cargo de presidente com diretoria e acesso completo, e o solicitante como presidente ativo.
@@ -51,6 +52,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - A administração da plataforma pode cadastrar somente dados básicos. Alguém da diretoria deverá concluir a configuração posteriormente.
 - Quando o administrador da plataforma inicia a organização, ele indica um CPF para receber uma concessão temporária de configuração. Essa concessão não é vínculo nem acesso completo e termina com a ativação.
 - A organização começa em configuração (PROVISIONING). O fluxo inclui dados institucionais e CNPJ, estatuto, ata de eleição, configuração dos cargos e composição da diretoria.
+- Estatuto e ata de eleição são obrigatórios para ativação. Os arquivos são armazenados privadamente no Vercel Blob, com limite de 3 MB e formatos PDF, JPEG ou PNG.
 - Antes da ativação, deve existir exatamente um cargo padrão de ingresso ativo, sem acesso completo e fora da diretoria; pelo menos um cargo ativo com acesso completo; e ocupantes ou convites individuais válidos para os cargos ativos da diretoria.
 - A organização só se torna operacional quando houver pelo menos um membro ativo com cargo ativo de acesso completo. Não é necessário que todos os demais convites da diretoria tenham sido aceitos.
 - O acesso temporário de configuração termina com a ativação. Não confundir esse acesso com um vínculo permanente ou com acesso completo.
@@ -65,6 +67,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Não atribuir permissões diretamente a usuários ou vínculos.
 - Somente pessoas com acesso completo podem administrar cargos e permissões ou conceder acesso completo. Ninguém pode conceder autoridade que não possui.
 - Um cargo de acesso completo possui todas as permissões configuráveis atuais e futuras, mas não ignora isolamento organizacional, propriedade de recursos, estados ou invariantes de negócio.
+- A desativação de um cargo é bloqueada apenas por vínculo ativo ou convite válido. Vínculos inativos e convites revogados, expirados ou esgotados não impedem a desativação e permanecem no histórico.
 - A autorização consulta o estado atual dos vínculos, cargos e permissões. Uma sessão não congela permissões antigas; mudanças devem valer nas verificações subsequentes sem exigir novo login.
 - Distinguir acesso básico de membro, acesso a recursos próprios, acesso privilegiado e acesso temporário de configuração. Nem toda operação exige uma permissão configurável.
 - O servidor é a autoridade. Esconder controles na interface ou receber um organizationId não comprova acesso.
@@ -107,6 +110,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Como administrador da plataforma, não pode ativar organização, alterar cargos ou permissões, criar ou revogar convites, desativar ou reativar vínculos, transferir presidência, excluir organização nem se passar por usuário.
 - A única exceção é a concessão temporária de configuração ao CPF indicado na criação da organização, que não é vínculo nem acesso completo e termina com a ativação.
 - Intervenções da plataforma devem ser auditadas e não criam vínculo, cargo ou acesso completo.
+- As intervenções usam `audit_events` com ações `platform.*` e metadados padronizados, incluindo criação de organização e concessão temporária.
 - Outros poderes não devem ser presumidos; qualquer ampliação exige decisão explícita e registro.
 - O navegador deve manter login entre visitas, permitir sessões em vários dispositivos e oferecer encerramento das demais sessões.
 - A futura API deverá ser adequada aos clientes nativos, sem presumir agora um formato específico de tokens.
@@ -123,6 +127,7 @@ Confirmadas pelo responsável pelo produto em 27/10/2026. Registram o mecanismo 
 - Vínculo entre pessoa e conta: `users.accountId` é único, impedindo que uma conta seja vinculada a mais de uma pessoa.
 - Confirmação de email: registrada em `users.email_verified_at` na conclusão do cadastro.
 - Limpeza operacional: sessões, tokens e contadores expirados são removidos após 30 dias por rotina diária.
+- Documentos institucionais: armazenamento privado no Vercel Blob, limite de 3 MB e formatos PDF, JPEG ou PNG.
 
 ## Decisões técnicas e detalhes pendentes
 

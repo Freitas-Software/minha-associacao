@@ -27,3 +27,9 @@ export function isValidCnpj(value: string): boolean {
 
   return calculateDigit(12) === digits[12] && calculateDigit(13) === digits[13]
 }
+
+export function isEligibleAssociationCnae(value: string | number): boolean {
+  const digits = String(value).replaceAll(/\D/g, '')
+
+  return digits.length === 7 && digits.startsWith('94')
+}

@@ -44,7 +44,7 @@ async function EditRoleContent({ params }: EditRolePageProps) {
   if (!canManage || !role) notFound()
 
   const canManageRole =
-    summary.access.hasFullAccess ||
+    summary.access.canGrantFullAccess ||
     (!role.hasFullAccess &&
       role.permissionCodes.every(code =>
         summary.access.permissions.includes(code),
@@ -52,7 +52,7 @@ async function EditRoleContent({ params }: EditRolePageProps) {
 
   if (!canManageRole) notFound()
 
-  const grantablePermissions = summary.access.hasFullAccess
+  const grantablePermissions = summary.access.canGrantFullAccess
     ? PERMISSION_CATALOG
     : PERMISSION_CATALOG.filter(permission =>
         summary.access.permissions.includes(permission.code),
@@ -79,7 +79,7 @@ async function EditRoleContent({ params }: EditRolePageProps) {
           mode="edit"
           role={role}
           permissions={grantablePermissions}
-          canGrantFullAccess={summary.access.hasFullAccess}
+          canGrantFullAccess={summary.access.canGrantFullAccess}
         />
       </section>
     </main>

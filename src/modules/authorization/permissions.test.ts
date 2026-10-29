@@ -17,6 +17,8 @@ function accessWith(
     roleId: 'role',
     organizationStatus: 'active',
     hasFullAccess: false,
+    canGrantFullAccess: false,
+    provisioningGrantId: null,
     permissions: new Set(),
     ...overrides,
   }

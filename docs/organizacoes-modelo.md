@@ -1,6 +1,6 @@
 # Modelo de domínio — organizações, cargos, permissões e convites
 
-**Status:** aprovado para implementação em 27/10/2026. As decisões da seção 8.1 estão confirmadas; as da seção 8.2 permanecem pendentes.
+**Status:** aprovado para implementação em 27/10/2026. As decisões da seção 8.1 estão confirmadas; resta pendente apenas a decisão sobre estados adicionais da organização (8.2).
 
 Este documento registra o modelo aprovado e as decisões ainda abertas. Ele **não substitui** [regras-de-negocio.md](regras-de-negocio.md); onde houver divergência, prevalecem as regras de negócio e a decisão explícita do responsável pelo produto.
 
@@ -200,7 +200,9 @@ Propriedades:
 - Não é vínculo permanente nem cargo.
 - Não concede acesso completo fora do estado `provisioning`.
 - Deve deixar de valer automaticamente quando a organização for ativada.
-- A concessão é criada para o CPF indicado pelo administrador da plataforma e deixa de valer na ativação.
+- A concessão é criada para o CPF indicado pelo administrador da plataforma, exige um `users` existente e deixa de valer na ativação.
+- A concessão permite configurar a organização durante `PROVISIONING`, inclusive criar cargos e conceder acesso completo, mas não cria vínculo, cargo ou acesso permanente.
+- A revogação é registrada em `revoked_at` na ativação e o acesso deixa de ser calculado a partir dela.
 
 ### 3.10 `organization_documents`
 
@@ -213,7 +215,7 @@ Documentos institucionais do fluxo de configuração.
 - `uploaded_by_user_id` uuid.
 - `created_at` timestamptz.
 
-A obrigatoriedade de cada documento para ativação ainda precisa ser confirmada. O armazenamento físico dos arquivos também precisa de decisão.
+Estatuto e ata de eleição são obrigatórios para ativação. O arquivo é armazenado privadamente no Vercel Blob; `storage_key` guarda o caminho do objeto e `organization_documents` preserva o histórico de envios. O download exige vínculo ou concessão válidos e permissão `organization.read`.
 
 ### 3.11 `platform_admins`
 
@@ -260,12 +262,12 @@ Antes de mudar `status` para `active`, verificar em uma transação:
 - existe pelo menos um cargo ativo com acesso completo;
 - cada cargo ativo de diretoria tem ocupante ativo ou convite individual válido;
 - existe pelo menos um vínculo ativo com cargo ativo de acesso completo;
-- os requisitos documentais definidos forem cumpridos.
+- existem estatuto e ata de eleição registrados em `organization_documents`.
 
 ### 4.2 Operação
 
 - A organização ativa não pode perder o último membro ativo com acesso completo. A operação deve ser bloqueada até existir um sucessor ativo.
-- Toda operação deve validar: identidade autenticada, organização de destino, vínculo ativo, cargo e permissão, propriedade do recurso, estado e invariantes.
+- Toda operação deve validar: identidade autenticada, organização de destino, vínculo ativo ou concessão de provisionamento válida, cargo e permissão, propriedade do recurso, estado e invariantes.
 - O servidor é a autoridade; `organizationId` enviado pelo cliente não comprova acesso.
 - Mudanças de cargo ou permissão valem imediatamente nas verificações seguintes, sem novo login.
 
@@ -292,10 +294,10 @@ Antes de mudar `status` para `active`, verificar em uma transação:
 
 ### 5.2 Criação pelo administrador da plataforma
 
-1. Administrador cria a organização com dados básicos.
+1. Administrador cria a organização com dados básicos e indica o CPF que receberá a concessão temporária.
 2. A organização fica em `PROVISIONING`.
-3. Alguém da diretoria precisa concluir a configuração.
-4. A forma de conceder esse acesso continua pendente.
+3. A pessoa indicada conclui a configuração dos cargos, diretoria, documentos e convites.
+4. A concessão termina automaticamente na ativação.
 
 ### 5.3 Convite individual
 
@@ -332,7 +334,8 @@ Regras de decisão:
 - acesso completo concede todas as permissões configuráveis, mas não ignora isolamento, propriedade, estados ou invariantes;
 - permissões explícitas são verificadas no cargo atual;
 - administração da plataforma é verificada separadamente e auditada;
-- acesso temporário de configuração só vale durante `PROVISIONING`.
+- acesso temporário de configuração só vale durante `PROVISIONING` e confere permissões de configuração sem criar vínculo ou cargo;
+- durante `PROVISIONING`, a concessão pode administrar cargos e conceder acesso completo; na ativação ela é revogada.
 
 ## 7. Fases sugeridas de implementação
 
@@ -374,16 +377,16 @@ Regras de decisão:
 5. O titular escolhe o contato a manter ao concluir a conta; a escolha encerra as divergências registradas.
 6. Convites individuais expiram em 7 dias e têm 1 uso; compartilhados expiram em 30 dias com limite definido pelo operador. O reenvio invalida o link anterior e respeita 60 segundos.
 7. O administrador da plataforma pode criar organização com dados básicos, analisar solicitações (consultar a ata e aprovar ou rejeitar com motivo) e listar organizações. Não acessa membros, convites, cargos, configurações, auditoria ou outras operações internas sem vínculo ativo; não ativa organização, não altera vínculos, não exclui organização e não se passa por usuário. Intervenções são auditadas e novos poderes exigem decisão explícita.
+8. A desativação de cargo é bloqueada apenas por vínculo ativo ou convite válido. Vínculos inativos, convites revogados, expirados ou esgotados não impedem a desativação e permanecem no histórico.
+9. Estatuto e ata de eleição são obrigatórios para ativação. Os arquivos são armazenados privadamente no Vercel Blob, com limite de 3 MB e formatos PDF, JPEG ou PNG.
+10. O CNPJ é elegível quando o CNAE fiscal pertence ao grupo 94 (atividades de associação).
+11. As intervenções da plataforma usam `audit_events`, com ações `platform.*` e metadados padronizados, incluindo a criação da organização e da concessão temporária.
 
 ### 8.2 Pendentes
 
-Estas decisões bloqueiam partes do modelo e não devem ser resolvidas por suposição:
+Esta decisão bloqueia partes do modelo e não deve ser resolvida por suposição:
 
-1. O que acontece com um cargo desativado que ainda possui vínculos ou convites?
-2. Estatuto e ata são obrigatórios para ativação? Onde os arquivos serão armazenados?
-3. Quais critérios de elegibilidade do CNPJ serão aplicados (por exemplo, CNAE de associação)?
-4. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
-5. Qual é o formato de auditoria exigido para intervenções da plataforma?
+1. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
 
 ## 9. Riscos e cuidados
 

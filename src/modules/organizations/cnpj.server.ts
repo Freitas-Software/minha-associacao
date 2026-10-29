@@ -1,10 +1,11 @@
 import 'server-only'
 import z from 'zod'
-import { normalizeCnpj } from './cnpj'
+import { isEligibleAssociationCnae, normalizeCnpj } from './cnpj'
 
 const responseSchema = z.object({
   cnpj: z.string().min(14),
   razao_social: z.string().min(1).max(255),
+  cnae_fiscal: z.union([z.string(), z.number()]),
 })
 
 // BrasilAPI blocks requests without a descriptive User-Agent.
@@ -13,6 +14,7 @@ const BRAZIL_API_USER_AGENT = 'Associae/1.0'
 export type CnpjLookup = {
   cnpj: string
   legalName: string
+  cnaeFiscal: string
 }
 
 export async function lookupCnpj(cnpj: string): Promise<CnpjLookup> {
@@ -90,8 +92,17 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookup> {
     )
   }
 
+  const cnaeFiscal = String(parsed.data.cnae_fiscal).replaceAll(/\D/g, '')
+
+  if (!isEligibleAssociationCnae(cnaeFiscal)) {
+    throw new Error(
+      'Este CNPJ não é elegível: o CNAE fiscal informado não pertence a uma atividade de associação (grupo 94).',
+    )
+  }
+
   return {
     cnpj: returnedCnpj,
     legalName: parsed.data.razao_social,
+    cnaeFiscal,
   }
 }

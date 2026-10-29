@@ -53,7 +53,7 @@ async function RolesContent({ params }: RolesPageProps) {
   const canManage =
     access.hasFullAccess || access.permissions.includes(PERMISSIONS.rolesManage)
 
-  const grantablePermissions = access.hasFullAccess
+  const grantablePermissions = access.canGrantFullAccess
     ? PERMISSION_CATALOG
     : PERMISSION_CATALOG.filter(permission =>
         access.permissions.includes(permission.code),
@@ -64,7 +64,7 @@ async function RolesContent({ params }: RolesPageProps) {
     permissionCodes: string[]
   }): boolean {
     if (!canManage) return false
-    if (access.hasFullAccess) return true
+    if (access.canGrantFullAccess) return true
 
     return (
       !role.hasFullAccess &&
@@ -95,7 +95,7 @@ async function RolesContent({ params }: RolesPageProps) {
             organizationId={summary.organization.id}
             mode="create"
             permissions={grantablePermissions}
-            canGrantFullAccess={summary.access.hasFullAccess}
+            canGrantFullAccess={summary.access.canGrantFullAccess}
           />
         </section>
       ) : null}

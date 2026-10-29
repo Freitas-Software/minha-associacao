@@ -136,6 +136,25 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
         </div>
 
         <div className="rounded-lg border bg-background p-5">
+          <h2 className="font-semibold">Documentos institucionais</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Envie o estatuto e a ata de eleição exigidos para a ativação.
+          </p>
+          {canUpdateOrganization ? (
+            <Link
+              href={`/app/organizacoes/${summary.organization.id}/documentos`}
+              className="mt-4 inline-block text-sm underline underline-offset-4"
+            >
+              Gerenciar documentos
+            </Link>
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Você não tem permissão para enviar documentos.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border bg-background p-5">
           <h2 className="font-semibold">Convites</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Convide pessoas, acompanhe usos e revogue links.
@@ -184,8 +203,9 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
           <>
             <p className="text-sm text-muted-foreground">
               Antes de ativar, a organização precisa de um cargo padrão ativo,
-              um cargo ativo com acesso completo, diretoria ocupada e pelo menos
-              um membro ativo com acesso completo.
+              um cargo ativo com acesso completo, diretoria ocupada, pelo menos
+              um membro ativo com acesso completo e os documentos institucionais
+              obrigatórios.
             </p>
             {canActivate ? (
               <ActivateOrganizationButton

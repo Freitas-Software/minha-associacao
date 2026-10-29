@@ -1,5 +1,6 @@
 import z from 'zod'
 import { PERMISSION_CODES } from '@/modules/authorization/permissions'
+import { cpfSchema } from '@/modules/identity/registration.schema'
 import { isValidCnpj, normalizeCnpj } from './cnpj'
 
 export const cnpjSchema = z
@@ -24,6 +25,7 @@ const acronymSchema = z
 export const createOrganizationSchema = z.object({
   cnpj: cnpjSchema,
   acronym: acronymSchema,
+  granteeDocumentNumber: cpfSchema,
 })
 
 export const updateOrganizationSchema = z.object({

@@ -15,15 +15,21 @@ import {
   createOrganization,
   createRole,
   deactivateMembership,
+  getOrganizationSummary,
   listAdminOrganizations,
   listAssignableRoles,
   listOrganizationMemberships,
   listPendingPreRegistrations,
   listRoles,
+  listUserOrganizations,
   updateMembershipRole,
   updateOrganization,
   updateRole,
 } from './organization.server'
+import {
+  listOrganizationDocuments,
+  uploadOrganizationDocument,
+} from './organization-document.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
 const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
@@ -127,6 +133,22 @@ test('organization domain on PostgreSQL, using temporary tables', {
         created_by_membership_id uuid,
         created_at timestamptz DEFAULT now() NOT NULL
       );
+      CREATE TEMP TABLE provisioning_grants (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        user_id uuid NOT NULL,
+        created_by_user_id uuid NOT NULL,
+        created_at timestamptz DEFAULT now() NOT NULL,
+        revoked_at timestamptz
+      );
+      CREATE TEMP TABLE organization_documents (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        type varchar(20) NOT NULL,
+        storage_key text NOT NULL,
+        uploaded_by_user_id uuid NOT NULL,
+        created_at timestamptz DEFAULT now() NOT NULL
+      );
       CREATE TEMP TABLE audit_events (
         id uuid PRIMARY KEY,
         actor_user_id uuid,
@@ -180,6 +202,29 @@ test('organization domain on PostgreSQL, using temporary tables', {
       )
 
       return id
+    }
+
+    async function getDocument(userId: string) {
+      const result = await pool.query<{ document_number: string }>(
+        'SELECT document_number FROM pg_temp.users WHERE id = $1',
+        [userId],
+      )
+
+      return result.rows[0].document_number
+    }
+
+    async function insertRequiredDocuments(
+      organizationId: string,
+      uploadedByUserId: string,
+    ) {
+      await pool.query(
+        `INSERT INTO pg_temp.organization_documents
+          (id, organization_id, type, storage_key, uploaded_by_user_id)
+         VALUES
+          ($1, $2, 'statute', 'organizations/test/statute.pdf', $3),
+          ($4, $2, 'election_minutes', 'organizations/test/minutes.pdf', $3)`,
+        [randomUUID(), organizationId, uploadedByUserId, randomUUID()],
+      )
     }
 
     async function createPlatformAdmin(userId: string) {
@@ -263,7 +308,8 @@ test('organization domain on PostgreSQL, using temporary tables', {
       await pool.query(
         `TRUNCATE pg_temp.users, pg_temp.organizations, pg_temp.platform_admins,
           pg_temp.roles, pg_temp.role_permissions, pg_temp.memberships,
-          pg_temp.invites, pg_temp.audit_events,
+          pg_temp.invites, pg_temp.provisioning_grants,
+          pg_temp.organization_documents, pg_temp.audit_events,
           pg_temp.registration_requests`,
       )
     }
@@ -273,11 +319,22 @@ test('organization domain on PostgreSQL, using temporary tables', {
 
       const adminId = await createUser('admin')
       const outsiderId = await createUser('outsider')
+      const granteeId = await createUser('grantee')
+      await pool.query(
+        "UPDATE pg_temp.users SET document_number = '52998224725' WHERE id = $1",
+        [granteeId],
+      )
+      const granteeDocument = await getDocument(granteeId)
       await createPlatformAdmin(adminId)
 
       assert.deepEqual(
         await createOrganization(
-          { actorUserId: outsiderId, cnpj: VALID_CNPJ, acronym: 'ORG' },
+          {
+            actorUserId: outsiderId,
+            cnpj: VALID_CNPJ,
+            acronym: 'ORG',
+            granteeDocumentNumber: granteeDocument,
+          },
           database,
         ),
         { status: 'forbidden' },
@@ -285,10 +342,28 @@ test('organization domain on PostgreSQL, using temporary tables', {
 
       assert.deepEqual(
         await createOrganization(
-          { actorUserId: adminId, cnpj: '11222333000180', acronym: 'ORG' },
+          {
+            actorUserId: adminId,
+            cnpj: '11222333000180',
+            acronym: 'ORG',
+            granteeDocumentNumber: granteeDocument,
+          },
           database,
         ),
         { status: 'invalid-cnpj' },
+      )
+
+      assert.deepEqual(
+        await createOrganization(
+          {
+            actorUserId: adminId,
+            cnpj: VALID_CNPJ,
+            acronym: 'ORG',
+            granteeDocumentNumber: '11144477735',
+          },
+          database,
+        ),
+        { status: 'grantee-not-found' },
       )
 
       const fetchMock = t.mock.method(
@@ -299,13 +374,19 @@ test('organization domain on PostgreSQL, using temporary tables', {
             JSON.stringify({
               cnpj: VALID_CNPJ,
               razao_social: 'ASSOCIACAO TESTE',
+              cnae_fiscal: 9430800,
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
           ),
       )
 
       const created = await createOrganization(
-        { actorUserId: adminId, cnpj: VALID_CNPJ, acronym: 'AT' },
+        {
+          actorUserId: adminId,
+          cnpj: VALID_CNPJ,
+          acronym: 'AT',
+          granteeDocumentNumber: granteeDocument,
+        },
         database,
       )
 
@@ -332,21 +413,250 @@ test('organization domain on PostgreSQL, using temporary tables', {
 
       assert.equal(memberships.rowCount, 0)
 
+      const grants = await pool.query<{
+        user_id: string
+        revoked_at: Date | null
+      }>('SELECT user_id, revoked_at FROM pg_temp.provisioning_grants')
+
+      assert.deepEqual(grants.rows, [{ user_id: granteeId, revoked_at: null }])
+
       const audit = await pool.query<{ action: string }>(
-        'SELECT action FROM pg_temp.audit_events',
+        'SELECT action FROM pg_temp.audit_events ORDER BY action',
       )
 
-      assert.deepEqual(audit.rows, [{ action: 'organization.created' }])
+      assert.deepEqual(audit.rows, [
+        { action: 'platform.organization_created' },
+        { action: 'platform.provisioning_grant_created' },
+      ])
 
       assert.deepEqual(
         await createOrganization(
-          { actorUserId: adminId, cnpj: VALID_CNPJ, acronym: 'AT' },
+          {
+            actorUserId: adminId,
+            cnpj: VALID_CNPJ,
+            acronym: 'AT',
+            granteeDocumentNumber: granteeDocument,
+          },
           database,
         ),
         { status: 'duplicate-cnpj' },
       )
 
       fetchMock.mock.restore()
+    })
+
+    await t.test(
+      'grants temporary provisioning access until activation',
+      async () => {
+        await reset()
+
+        const adminId = await createUser('admin')
+        const granteeId = await createUser('grantee')
+        const presidentId = await createUser('president')
+        const organizationId = await createOrganizationRow(adminId)
+
+        await pool.query(
+          `INSERT INTO pg_temp.provisioning_grants
+            (id, organization_id, user_id, created_by_user_id)
+           VALUES ($1, $2, $3, $4)`,
+          [randomUUID(), organizationId, granteeId, adminId],
+        )
+
+        const summary = await getOrganizationSummary(
+          granteeId,
+          organizationId,
+          database,
+        )
+
+        assert.equal(summary.status, 'ok')
+
+        if (summary.status !== 'ok') throw new Error('Expected access')
+
+        assert.equal(summary.access.hasFullAccess, false)
+        assert.equal(summary.access.canGrantFullAccess, true)
+        assert.ok(summary.access.provisioningGrantId)
+
+        assert.deepEqual(
+          (await listUserOrganizations(granteeId, database)).map(
+            organization => organization.roleName,
+          ),
+          ['Acesso temporário de configuração'],
+        )
+
+        const fullAccessRole = await createRole(
+          {
+            actorUserId: granteeId,
+            organizationId,
+            role: {
+              name: 'Presidente',
+              isDirector: false,
+              hasFullAccess: true,
+              isDefault: false,
+              permissionCodes: [],
+            },
+          },
+          database,
+        )
+
+        assert.equal(fullAccessRole.status, 'created')
+
+        if (fullAccessRole.status !== 'created') {
+          throw new Error('Expected role creation')
+        }
+
+        const defaultRole = await createRole(
+          {
+            actorUserId: granteeId,
+            organizationId,
+            role: {
+              name: 'Associado',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: true,
+              permissionCodes: [],
+            },
+          },
+          database,
+        )
+
+        assert.equal(defaultRole.status, 'created')
+
+        await createMembershipRow(
+          organizationId,
+          presidentId,
+          fullAccessRole.roleId,
+        )
+        await insertRequiredDocuments(organizationId, granteeId)
+
+        assert.deepEqual(
+          await activateOrganization(granteeId, organizationId, database),
+          { status: 'activated' },
+        )
+
+        const grants = await pool.query<{ revoked_at: Date | null }>(
+          'SELECT revoked_at FROM pg_temp.provisioning_grants',
+        )
+
+        assert.notEqual(grants.rows[0].revoked_at, null)
+
+        assert.deepEqual(
+          await getOrganizationSummary(granteeId, organizationId, database),
+          { status: 'forbidden' },
+        )
+      },
+    )
+
+    await t.test('uploads and lists institutional documents', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const outsiderId = await createUser('outsider')
+      const organizationId = await createOrganizationRow(presidentId)
+      const presidentRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+
+      await createMembershipRow(organizationId, presidentId, presidentRoleId)
+
+      const storage = {
+        store: async (
+          pathname: string,
+          _file: { data: Buffer; contentType: string },
+        ) => ({ storageKey: pathname }),
+        remove: async (_storageKey: string) => undefined,
+      }
+
+      assert.deepEqual(
+        await uploadOrganizationDocument(
+          {
+            actorUserId: outsiderId,
+            organizationId,
+            type: 'statute',
+            fileName: 'estatuto.pdf',
+            contentType: 'application/pdf',
+            data: Buffer.from('%PDF-1.4'),
+          },
+          database,
+          storage,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await uploadOrganizationDocument(
+          {
+            actorUserId: presidentId,
+            organizationId,
+            type: 'bylaws',
+            fileName: 'estatuto.pdf',
+            contentType: 'application/pdf',
+            data: Buffer.from('%PDF-1.4'),
+          },
+          database,
+          storage,
+        ),
+        { status: 'invalid-type' },
+      )
+
+      assert.deepEqual(
+        await uploadOrganizationDocument(
+          {
+            actorUserId: presidentId,
+            organizationId,
+            type: 'statute',
+            fileName: 'estatuto.txt',
+            contentType: 'text/plain',
+            data: Buffer.from('estatuto'),
+          },
+          database,
+          storage,
+        ),
+        { status: 'invalid-file' },
+      )
+
+      const uploaded = await uploadOrganizationDocument(
+        {
+          actorUserId: presidentId,
+          organizationId,
+          type: 'statute',
+          fileName: 'Estatuto Social.pdf',
+          contentType: 'application/pdf',
+          data: Buffer.from('%PDF-1.4'),
+        },
+        database,
+        storage,
+      )
+
+      assert.equal(uploaded.status, 'uploaded')
+
+      if (uploaded.status !== 'uploaded') {
+        throw new Error('Expected upload')
+      }
+
+      const list = await listOrganizationDocuments(
+        presidentId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(list.status, 'ok')
+
+      if (list.status !== 'ok') throw new Error('Expected documents')
+
+      assert.equal(list.documents.length, 1)
+      assert.equal(list.documents[0].type, 'statute')
+      assert.equal(list.documents[0].label, 'Estatuto')
+      assert.match(
+        list.documents[0].storageKey,
+        /organizations\/.*\/documentos\/statute\//,
+      )
+
+      const audit = await pool.query<{ action: string }>(
+        "SELECT action FROM pg_temp.audit_events WHERE action = 'organization.document_uploaded'",
+      )
+
+      assert.equal(audit.rowCount, 1)
     })
 
     await t.test(
@@ -666,6 +976,13 @@ test('organization domain on PostgreSQL, using temporary tables', {
           isDefault: true,
         })
 
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'missing-documents' },
+        )
+
+        await insertRequiredDocuments(organizationId, presidentId)
+
         const activated = await activateOrganization(
           presidentId,
           organizationId,
@@ -744,6 +1061,7 @@ test('organization domain on PostgreSQL, using temporary tables', {
         await pool.query('DELETE FROM pg_temp.invites')
 
         await insertDirectorInvite({ expiresAt: '1 day' })
+        await insertRequiredDocuments(organizationId, presidentId)
 
         assert.deepEqual(
           await activateOrganization(presidentId, organizationId, database),

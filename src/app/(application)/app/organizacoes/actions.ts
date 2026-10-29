@@ -379,7 +379,8 @@ export async function activateOrganizationAction(
       revalidatePath(`/app/organizacoes/${organizationId}`)
       return {
         status: 'success',
-        message: 'Organização ativada com sucesso.',
+        message:
+          'Organização ativada com sucesso. A concessão temporária de configuração foi encerrada.',
       }
     }
 
@@ -407,13 +408,20 @@ export async function activateOrganizationAction(
       case 'missing-director-occupant':
         return {
           status: 'error',
-          message: 'Todo cargo ativo de diretoria precisa ter um membro ativo.',
+          message:
+            'Todo cargo ativo de diretoria precisa ter um membro ativo ou um convite individual válido.',
         }
       case 'missing-full-access-member':
         return {
           status: 'error',
           message:
             'A organização precisa de pelo menos um membro ativo com cargo de acesso completo.',
+        }
+      case 'missing-documents':
+        return {
+          status: 'error',
+          message:
+            'Envie o estatuto e a ata de eleição antes de ativar a organização.',
         }
     }
 
