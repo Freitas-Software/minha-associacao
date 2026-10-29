@@ -99,7 +99,15 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 
 - Haverá painel administrativo neste mesmo repositório; inicialmente, o único administrador da plataforma será o responsável pelo aplicativo.
 - Administração da plataforma é uma autoridade distinta de cargos de associações. Intervenções devem ser identificadas e auditadas.
-- O poder confirmado do painel inclui iniciar organizações com dados básicos. Outros poderes não devem ser presumidos.
+- O painel administrativo tem poderes limitados e explícitos:
+  - criar organização com dados básicos, sem criar vínculo do administrador com ela;
+  - analisar solicitações de criação de organização, incluindo consultar a ata anexada e aprovar ou rejeitar com motivo;
+  - listar as organizações da plataforma com dados básicos e status.
+- O administrador da plataforma não recebe, por esse papel, acesso a membros, convites, cargos, configurações, auditoria ou qualquer outro dado interno de uma organização. Essas operações exigem vínculo ativo e permissão do cargo, como para qualquer outra pessoa.
+- Como administrador da plataforma, não pode ativar organização, alterar cargos ou permissões, criar ou revogar convites, desativar ou reativar vínculos, transferir presidência, excluir organização nem se passar por usuário.
+- A única exceção é a concessão temporária de configuração ao CPF indicado na criação da organização, que não é vínculo nem acesso completo e termina com a ativação.
+- Intervenções da plataforma devem ser auditadas e não criam vínculo, cargo ou acesso completo.
+- Outros poderes não devem ser presumidos; qualquer ampliação exige decisão explícita e registro.
 - O navegador deve manter login entre visitas, permitir sessões em vários dispositivos e oferecer encerramento das demais sessões.
 - A futura API deverá ser adequada aos clientes nativos, sem presumir agora um formato específico de tokens.
 
@@ -123,7 +131,6 @@ Estes pontos não são regras já resolvidas nem autorização para implementar 
 - Verificar se a BrasilAPI fornece dados suficientes e confiáveis para comprovar o vínculo CPF/CNPJ. A consulta de CNPJ e a validação da ata pelo administrador da plataforma são o caminho provisório confirmado.
 - Definir recuperação de acesso quando o titular não controla mais o email cadastrado, já que o fluxo confirmado usa somente o email vinculado.
 - Avaliar proteção adicional contra abuso e concorrência além dos limites, do uso único e da renovação confirmados.
-- Definir os limites dos poderes administrativos além do cadastro básico de organizações e da análise/aprovação de solicitações de criação.
 - Não importar todas as regras financeiras detalhadas, prazos de convites ou outras funcionalidades antigas sem confirmação específica.
 
 ## Como manter este documento
