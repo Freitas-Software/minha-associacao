@@ -17,6 +17,7 @@ import {
 } from '@/modules/invites/invite-policy'
 import { inviteAcceptanceUrl } from '@/modules/invites/invite-url'
 import {
+  closeOrganizationSchema,
   createRoleSchema,
   deactivateMembershipSchema,
   updateOrganizationSchema,
@@ -24,8 +25,10 @@ import {
 } from '@/modules/organizations/organization.schema'
 import {
   activateOrganization,
+  closeOrganization,
   createRole,
   deactivateMembership,
+  reopenOrganization,
   updateMembershipRole,
   updateOrganization,
   updateRole,
@@ -253,6 +256,13 @@ export async function acceptInviteAction(
       }
     }
 
+    if (result.status === 'organization-closed') {
+      return {
+        status: 'error',
+        message: 'A organização deste convite foi encerrada.',
+      }
+    }
+
     return {
       status: 'error',
       message: 'Este convite é inválido, expirou ou já esgotou os usos.',
@@ -394,6 +404,12 @@ export async function activateOrganizationAction(
         return { status: 'error', message: 'Organização não encontrada.' }
       case 'already-active':
         return { status: 'error', message: 'A organização já está ativa.' }
+      case 'not-provisioning':
+        return {
+          status: 'error',
+          message:
+            'A organização está encerrada. Reabra antes de tentar ativá-la.',
+        }
       case 'missing-default-role':
         return {
           status: 'error',
@@ -434,6 +450,131 @@ export async function activateOrganizationAction(
     return {
       status: 'error',
       message: 'Não foi possível ativar a organização agora.',
+    }
+  }
+}
+
+export async function closeOrganizationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+
+  if (!z.uuid().safeParse(organizationId).success) {
+    return { status: 'error', message: 'Organização inválida.' }
+  }
+
+  const parsed = closeOrganizationSchema.safeParse({
+    reason: readText(formData, 'reason'),
+  })
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message:
+        parsed.error.issues[0]?.message ?? 'Informe o motivo do encerramento.',
+    }
+  }
+
+  try {
+    const result = await closeOrganization({
+      actorUserId: session.userId,
+      organizationId,
+      reason: parsed.data.reason,
+    })
+
+    if (result.status === 'closed') {
+      revalidatePath('/app/organizacoes')
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/auditoria`)
+
+      return {
+        status: 'success',
+        message:
+          result.revokedInvites > 0
+            ? `Organização encerrada. ${result.revokedInvites} convite(s) revogado(s).`
+            : 'Organização encerrada.',
+      }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para encerrar a organização.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Organização não encontrada.' }
+      case 'not-active':
+        return {
+          status: 'error',
+          message: 'Somente organizações ativas podem ser encerradas.',
+        }
+      case 'already-closed':
+        return { status: 'error', message: 'A organização já está encerrada.' }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível encerrar a organização agora.',
+    }
+  } catch {
+    console.error('[closeOrganizationAction]', { stage: 'close' })
+    return {
+      status: 'error',
+      message: 'Não foi possível encerrar a organização agora.',
+    }
+  }
+}
+
+export async function reopenOrganizationAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+
+  if (!z.uuid().safeParse(organizationId).success) {
+    return { status: 'error', message: 'Organização inválida.' }
+  }
+
+  try {
+    const result = await reopenOrganization(session.userId, organizationId)
+
+    if (result.status === 'reopened') {
+      revalidatePath('/app/organizacoes')
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/auditoria`)
+
+      return {
+        status: 'success',
+        message:
+          'Organização reaberta. Os convites revogados no encerramento não foram restaurados.',
+      }
+    }
+
+    switch (result.status) {
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para reabrir a organização.',
+        }
+      case 'not-found':
+        return { status: 'error', message: 'Organização não encontrada.' }
+      case 'not-closed':
+        return { status: 'error', message: 'A organização não está encerrada.' }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível reabrir a organização agora.',
+    }
+  } catch {
+    console.error('[reopenOrganizationAction]', { stage: 'reopen' })
+    return {
+      status: 'error',
+      message: 'Não foi possível reabrir a organização agora.',
     }
   }
 }

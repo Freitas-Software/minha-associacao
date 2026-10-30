@@ -11,7 +11,14 @@ import {
   PERMISSIONS,
 } from '@/modules/authorization/permissions'
 import {
+  createInvite,
+  getInviteManagementData,
+  resendInvite,
+  revokeInvite,
+} from '@/modules/invites/invite.server'
+import {
   activateOrganization,
+  closeOrganization,
   createOrganization,
   createRole,
   deactivateMembership,
@@ -22,6 +29,7 @@ import {
   listPendingPreRegistrations,
   listRoles,
   listUserOrganizations,
+  reopenOrganization,
   updateMembershipRole,
   updateOrganization,
   updateRole,
@@ -30,6 +38,7 @@ import {
   listOrganizationDocuments,
   uploadOrganizationDocument,
 } from './organization-document.server'
+import { createPreRegistrationLink } from './pre-registration.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
 const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
@@ -69,6 +78,7 @@ test('organization domain on PostgreSQL, using temporary tables', {
         cnpj_verified_at timestamptz,
         created_by_user_id uuid NOT NULL,
         activated_at timestamptz,
+        closed_at timestamptz,
         created_at timestamptz DEFAULT now() NOT NULL,
         updated_at timestamptz DEFAULT now() NOT NULL
       );
@@ -1005,6 +1015,232 @@ test('organization domain on PostgreSQL, using temporary tables', {
     )
 
     await t.test(
+      'closes and reopens an organization with audited read-only access',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const outsiderId = await createUser('outsider')
+        const organizationId = await createOrganizationRow(
+          presidentId,
+          'active',
+        )
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+
+        await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+
+        await pool.query(
+          `INSERT INTO pg_temp.invites
+            (id, organization_id, role_id, type, document_number, token_hash,
+             max_uses, uses_count, expires_at, created_by_user_id)
+           VALUES ($1, $2, $3, 'individual', '12345678901', $4, 1, 0,
+             now() + interval '1 day', $5)`,
+          [
+            randomUUID(),
+            organizationId,
+            presidentRoleId,
+            `token-${randomUUID()}`,
+            presidentId,
+          ],
+        )
+
+        assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: outsiderId,
+              organizationId,
+              reason: 'Encerramento indevido',
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              reason: 'Dissolução aprovada em assembleia',
+            },
+            database,
+          ),
+          { status: 'closed', revokedInvites: 1 },
+        )
+
+        const organization = await pool.query<{
+          status: string
+          closed_at: Date | null
+        }>(
+          'SELECT status, closed_at FROM pg_temp.organizations WHERE id = $1',
+          [organizationId],
+        )
+
+        assert.equal(organization.rows[0].status, 'closed')
+        assert.ok(organization.rows[0].closed_at)
+
+        const invites = await pool.query<{ revoked_at: Date | null }>(
+          'SELECT revoked_at FROM pg_temp.invites',
+        )
+
+        assert.ok(invites.rows[0].revoked_at)
+
+        const summary = await getOrganizationSummary(
+          presidentId,
+          organizationId,
+          database,
+        )
+
+        assert.equal(summary.status, 'ok')
+
+        if (summary.status !== 'ok') throw new Error('Expected access')
+
+        assert.equal(summary.access.hasFullAccess, false)
+        assert.equal(summary.access.canGrantFullAccess, false)
+        assert.ok(summary.access.permissions.includes(PERMISSIONS.membersRead))
+        assert.ok(
+          summary.access.permissions.includes(PERMISSIONS.organizationClose),
+        )
+        assert.ok(
+          !summary.access.permissions.includes(PERMISSIONS.membersManage),
+        )
+        assert.ok(!summary.access.permissions.includes(PERMISSIONS.rolesManage))
+        assert.ok(summary.organization.closedAt)
+
+        assert.deepEqual(
+          await createRole(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              role: {
+                name: 'Tesoureiro',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: false,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              data: { acronym: 'NOVA' },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              reason: 'Encerramento repetido',
+            },
+            database,
+          ),
+          { status: 'already-closed' },
+        )
+
+        assert.deepEqual(
+          await reopenOrganization(presidentId, organizationId, database),
+          { status: 'reopened' },
+        )
+
+        const reopened = await pool.query<{
+          status: string
+          closed_at: Date | null
+        }>(
+          'SELECT status, closed_at FROM pg_temp.organizations WHERE id = $1',
+          [organizationId],
+        )
+
+        assert.equal(reopened.rows[0].status, 'active')
+        assert.equal(reopened.rows[0].closed_at, null)
+
+        assert.deepEqual(
+          await reopenOrganization(presidentId, organizationId, database),
+          { status: 'not-closed' },
+        )
+
+        const createdAfterReopen = await createRole(
+          {
+            actorUserId: presidentId,
+            organizationId,
+            role: {
+              name: 'Tesoureiro',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: false,
+              permissionCodes: [PERMISSIONS.membersRead],
+            },
+          },
+          database,
+        )
+
+        assert.equal(createdAfterReopen.status, 'created')
+
+        const audit = await pool.query<{ action: string }>(
+          `SELECT action FROM pg_temp.audit_events
+           WHERE action IN ('organization.closed', 'organization.reopened')
+           ORDER BY created_at`,
+        )
+
+        assert.deepEqual(
+          audit.rows.map(row => row.action),
+          ['organization.closed', 'organization.reopened'],
+        )
+      },
+    )
+
+    await t.test(
+      'does not close an organization under provisioning',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const organizationId = await createOrganizationRow(presidentId)
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+
+        assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              reason: 'Tentativa antes da ativação',
+            },
+            database,
+          ),
+          { status: 'not-active' },
+        )
+      },
+    )
+
+    await t.test(
       'accepts a valid individual invite for a director role at activation',
       async () => {
         await reset()
@@ -1629,6 +1865,23 @@ test('organization domain on PostgreSQL, using temporary tables', {
         )
 
         assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: adminId,
+              organizationId,
+              reason: 'Intervenção indevida',
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await reopenOrganization(adminId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
           await listOrganizationMemberships(
             adminId,
             organizationId,
@@ -1819,6 +2072,731 @@ test('organization domain on PostgreSQL, using temporary tables', {
         { status: 'forbidden' },
       )
     })
+
+    await t.test(
+      'keeps a closed organization read-only for every management path',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const managerId = await createUser('manager')
+        const memberId = await createUser('member')
+        const organizationId = await createOrganizationRow(
+          presidentId,
+          'active',
+        )
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          isDirector: true,
+          hasFullAccess: true,
+        })
+        const defaultRoleId = await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+        const managerRoleId = await createRoleRow(organizationId, {
+          name: 'Secretário',
+        })
+
+        await pool.query(
+          `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+           VALUES ($1, $2), ($1, $3)`,
+          [managerRoleId, PERMISSIONS.membersRead, PERMISSIONS.auditRead],
+        )
+
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+        const memberMembershipId = await createMembershipRow(
+          organizationId,
+          memberId,
+          defaultRoleId,
+        )
+        await createMembershipRow(organizationId, managerId, managerRoleId)
+
+        const closedInviteId = randomUUID()
+
+        await pool.query(
+          `INSERT INTO pg_temp.invites
+            (id, organization_id, role_id, type, document_number, token_hash,
+             max_uses, uses_count, expires_at, created_by_user_id)
+           VALUES ($1, $2, $3, 'individual', '12345678901', $4, 1, 0,
+             now() + interval '1 day', $5)`,
+          [
+            closedInviteId,
+            organizationId,
+            presidentRoleId,
+            `token-${randomUUID()}`,
+            presidentId,
+          ],
+        )
+
+        assert.deepEqual(
+          await closeOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              reason: 'Encerramento para conferência',
+            },
+            database,
+          ),
+          { status: 'closed', revokedInvites: 1 },
+        )
+
+        const summary = await getOrganizationSummary(
+          presidentId,
+          organizationId,
+          database,
+        )
+
+        assert.equal(summary.status, 'ok')
+
+        if (summary.status !== 'ok') throw new Error('Expected access')
+
+        assert.equal(summary.access.hasFullAccess, false)
+        assert.equal(summary.access.canGrantFullAccess, false)
+        assert.deepEqual(summary.access.permissions.sort(), [
+          'audit.read',
+          'members.read',
+          'organization.close',
+          'organization.read',
+          'roles.read',
+        ])
+
+        const roles = await listRoles(presidentId, organizationId, database)
+
+        assert.equal(roles.status, 'ok')
+
+        const members = await listOrganizationMemberships(
+          presidentId,
+          organizationId,
+          {},
+          database,
+        )
+
+        assert.equal(members.status, 'ok')
+
+        const documents = await listOrganizationDocuments(
+          presidentId,
+          organizationId,
+          database,
+        )
+
+        assert.equal(documents.status, 'ok')
+
+        const audit = await listAuditEvents(
+          presidentId,
+          organizationId,
+          { limit: 10 },
+          database,
+        )
+
+        assert.equal(audit.status, 'ok')
+
+        if (audit.status !== 'ok') throw new Error('Expected audit events')
+
+        assert.deepEqual(
+          audit.events.map(event => event.action),
+          ['organization.closed'],
+        )
+
+        const invitedAfterCloseId = randomUUID()
+
+        await pool.query(
+          `INSERT INTO pg_temp.invites
+            (id, organization_id, role_id, type, token_hash, max_uses,
+             expires_at, created_by_user_id)
+           VALUES ($1, $2, $3, 'shared', $4, null, now() + interval '1 day', $5)`,
+          [
+            invitedAfterCloseId,
+            organizationId,
+            defaultRoleId,
+            `token-${randomUUID()}`,
+            presidentId,
+          ],
+        )
+
+        assert.deepEqual(
+          await createRole(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              role: {
+                name: 'Tesoureiro',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: false,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateRole(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              roleId: defaultRoleId,
+              role: {
+                name: 'Associado',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: true,
+                isActive: true,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await createInvite(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              type: 'shared',
+              expiresAt: new Date(Date.now() + 86_400_000),
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await resendInvite(
+            { actorUserId: presidentId, inviteId: invitedAfterCloseId },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await revokeInvite(presidentId, invitedAfterCloseId, database),
+          { status: 'forbidden' },
+        )
+
+        const untouchedInvite = await pool.query<{ revoked_at: Date | null }>(
+          'SELECT revoked_at FROM pg_temp.invites WHERE id = $1',
+          [invitedAfterCloseId],
+        )
+
+        assert.equal(untouchedInvite.rows[0].revoked_at, null)
+
+        assert.deepEqual(
+          await getInviteManagementData(
+            presidentId,
+            organizationId,
+            {},
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await deactivateMembership(
+            {
+              actorUserId: presidentId,
+              membershipId: memberMembershipId,
+              reason: 'Não autorizado após encerramento',
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateMembershipRole(
+            {
+              actorUserId: presidentId,
+              membershipId: memberMembershipId,
+              roleId: managerRoleId,
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await createPreRegistrationLink(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              roleId: defaultRoleId,
+              person: {
+                name: 'Nova Pessoa',
+                documentNumber: '11144477735',
+                email: 'nova.pessoa@example.test',
+                phone: '11999990000',
+                birthDate: '1990-01-01',
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await uploadOrganizationDocument(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              type: 'statute',
+              fileName: 'estatuto.pdf',
+              contentType: 'application/pdf',
+              data: Buffer.from('document'),
+            },
+            database,
+            {
+              store: async (pathname: string) => ({ storageKey: pathname }),
+              remove: async () => undefined,
+            },
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await updateOrganization(
+            {
+              actorUserId: presidentId,
+              organizationId,
+              data: { acronym: 'NOVA' },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        const storedRoles = await pool.query<{ id: string }>(
+          'SELECT id FROM pg_temp.roles WHERE organization_id = $1',
+          [organizationId],
+        )
+
+        assert.equal(storedRoles.rowCount, 3)
+
+        const storedMemberships = await pool.query<{
+          status: string
+          role_id: string
+        }>(
+          'SELECT status, role_id FROM pg_temp.memberships WHERE user_id = $1',
+          [memberId],
+        )
+
+        assert.deepEqual(storedMemberships.rows, [
+          { status: 'active', role_id: defaultRoleId },
+        ])
+
+        assert.deepEqual(
+          await reopenOrganization(managerId, organizationId, database),
+          {
+            status: 'forbidden',
+          },
+        )
+
+        assert.deepEqual(
+          await reopenOrganization(presidentId, organizationId, database),
+          { status: 'reopened' },
+        )
+      },
+    )
+
+    await t.test('isolates authority between organizations', async () => {
+      await reset()
+
+      const presidentAId = await createUser('president-a')
+      const presidentBId = await createUser('president-b')
+      const memberBId = await createUser('member-b')
+      const organizationAId = await createOrganizationRow(
+        presidentAId,
+        'active',
+      )
+      const organizationBId = await createOrganizationRow(
+        presidentBId,
+        'active',
+      )
+      const presidentRoleAId = await createRoleRow(organizationAId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const defaultRoleAId = await createRoleRow(organizationAId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+      const presidentRoleBId = await createRoleRow(organizationBId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const defaultRoleBId = await createRoleRow(organizationBId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+
+      await createMembershipRow(organizationAId, presidentAId, presidentRoleAId)
+      await createMembershipRow(organizationBId, presidentBId, presidentRoleBId)
+      const memberBMembershipId = await createMembershipRow(
+        organizationBId,
+        memberBId,
+        defaultRoleBId,
+      )
+
+      const [organizationBBefore] = (
+        await pool.query<{ acronym: string }>(
+          'SELECT acronym FROM pg_temp.organizations WHERE id = $1',
+          [organizationBId],
+        )
+      ).rows
+
+      assert.deepEqual(
+        await getOrganizationSummary(presidentAId, organizationBId, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await updateOrganization(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            data: { acronym: 'TOMADA' },
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await createRole(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            role: {
+              name: 'Tesoureiro',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: false,
+              permissionCodes: [],
+            },
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await updateRole(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            roleId: defaultRoleBId,
+            role: {
+              name: 'Associado',
+              isDirector: false,
+              hasFullAccess: false,
+              isDefault: true,
+              isActive: false,
+              permissionCodes: [],
+            },
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await createInvite(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            type: 'shared',
+            roleId: defaultRoleBId,
+            expiresAt: new Date(Date.now() + 86_400_000),
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await deactivateMembership(
+          {
+            actorUserId: presidentAId,
+            membershipId: memberBMembershipId,
+            reason: 'Intervenção entre organizações',
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await updateMembershipRole(
+          {
+            actorUserId: presidentAId,
+            membershipId: memberBMembershipId,
+            roleId: presidentRoleBId,
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await createPreRegistrationLink(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            roleId: defaultRoleBId,
+            person: {
+              name: 'Pessoa Externa',
+              documentNumber: '11144477735',
+              email: 'externa@example.test',
+              phone: '11999990000',
+              birthDate: '1990-01-01',
+            },
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await activateOrganization(presidentAId, organizationBId, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await closeOrganization(
+          {
+            actorUserId: presidentAId,
+            organizationId: organizationBId,
+            reason: 'Encerramento entre organizações',
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listRoles(presidentAId, organizationBId, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listOrganizationMemberships(
+          presidentAId,
+          organizationBId,
+          {},
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listAssignableRoles(presidentAId, organizationBId, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listAuditEvents(presidentAId, organizationBId, {}, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await listOrganizationDocuments(
+          presidentAId,
+          organizationBId,
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await getInviteManagementData(
+          presidentAId,
+          organizationBId,
+          {},
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      const organizationB = await pool.query<{
+        acronym: string
+        status: string
+      }>('SELECT acronym, status FROM pg_temp.organizations WHERE id = $1', [
+        organizationBId,
+      ])
+
+      assert.deepEqual(organizationB.rows, [
+        { acronym: organizationBBefore.acronym, status: 'active' },
+      ])
+
+      const roleB = await pool.query<{ name: string; is_active: boolean }>(
+        'SELECT name, is_active FROM pg_temp.roles WHERE id = $1',
+        [defaultRoleBId],
+      )
+
+      assert.deepEqual(roleB.rows, [{ name: 'Associado', is_active: true }])
+
+      const membershipB = await pool.query<{
+        status: string
+        role_id: string
+      }>('SELECT status, role_id FROM pg_temp.memberships WHERE id = $1', [
+        memberBMembershipId,
+      ])
+
+      assert.deepEqual(membershipB.rows, [
+        { status: 'active', role_id: defaultRoleBId },
+      ])
+
+      const auditB = await pool.query(
+        'SELECT id FROM pg_temp.audit_events WHERE organization_id = $1',
+        [organizationBId],
+      )
+
+      assert.equal(auditB.rowCount, 0)
+
+      const roleA = await createRole(
+        {
+          actorUserId: presidentAId,
+          organizationId: organizationAId,
+          role: {
+            name: 'Tesoureiro',
+            isDirector: false,
+            hasFullAccess: false,
+            isDefault: false,
+            permissionCodes: [],
+          },
+        },
+        database,
+      )
+
+      assert.equal(roleA.status, 'created')
+
+      const rolesA = await listRoles(presidentAId, organizationAId, database)
+
+      assert.equal(rolesA.status, 'ok')
+
+      if (rolesA.status !== 'ok') throw new Error('Expected roles')
+
+      assert.deepEqual(rolesA.roles.map(role => role.name).sort(), [
+        'Associado',
+        'Presidente',
+        'Tesoureiro',
+      ])
+      assert.ok(rolesA.roles.some(role => role.id === defaultRoleAId))
+    })
+
+    await t.test(
+      'requires a non-privileged active default role to activate',
+      async () => {
+        await reset()
+
+        const presidentId = await createUser('president')
+        const organizationId = await createOrganizationRow(presidentId)
+        const presidentRoleId = await createRoleRow(organizationId, {
+          name: 'Presidente',
+          hasFullAccess: true,
+        })
+        const defaultRoleId = await createRoleRow(organizationId, {
+          name: 'Associado',
+          isDefault: true,
+        })
+
+        await createMembershipRow(organizationId, presidentId, presidentRoleId)
+        await insertRequiredDocuments(organizationId, presidentId)
+
+        await pool.query(
+          'UPDATE pg_temp.roles SET has_full_access = true WHERE id = $1',
+          [defaultRoleId],
+        )
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'missing-default-role' },
+        )
+
+        await pool.query(
+          `UPDATE pg_temp.roles
+           SET has_full_access = false, is_director = true
+           WHERE id = $1`,
+          [defaultRoleId],
+        )
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'missing-default-role' },
+        )
+
+        await pool.query(
+          'UPDATE pg_temp.roles SET is_director = false WHERE id = $1',
+          [defaultRoleId],
+        )
+
+        assert.deepEqual(
+          await activateOrganization(presidentId, organizationId, database),
+          { status: 'activated' },
+        )
+      },
+    )
+
+    await t.test(
+      'ends temporary provisioning access when the organization activates',
+      async () => {
+        await reset()
+
+        const adminId = await createUser('admin')
+        const granteeId = await createUser('grantee')
+        const organizationId = await createOrganizationRow(adminId)
+
+        await pool.query(
+          `INSERT INTO pg_temp.provisioning_grants
+            (id, organization_id, user_id, created_by_user_id)
+           VALUES ($1, $2, $3, $4)`,
+          [randomUUID(), organizationId, granteeId, adminId],
+        )
+
+        assert.equal(
+          (await getOrganizationSummary(granteeId, organizationId, database))
+            .status,
+          'ok',
+        )
+
+        await pool.query(
+          "UPDATE pg_temp.organizations SET status = 'active' WHERE id = $1",
+          [organizationId],
+        )
+
+        assert.deepEqual(
+          await getOrganizationSummary(granteeId, organizationId, database),
+          { status: 'forbidden' },
+        )
+
+        assert.deepEqual(
+          await createRole(
+            {
+              actorUserId: granteeId,
+              organizationId,
+              role: {
+                name: 'Tesoureiro',
+                isDirector: false,
+                hasFullAccess: false,
+                isDefault: false,
+                permissionCodes: [],
+              },
+            },
+            database,
+          ),
+          { status: 'forbidden' },
+        )
+      },
+    )
   } finally {
     await pool.end()
   }

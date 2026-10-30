@@ -8,6 +8,10 @@ import { requireSession } from '@/lib/session'
 import { PERMISSIONS } from '@/modules/authorization/permissions'
 import { getOrganizationSummary } from '@/modules/organizations/organization.server'
 import { ActivateOrganizationButton } from './components/activate-organization-button'
+import {
+  CloseOrganizationForm,
+  ReopenOrganizationForm,
+} from './components/organization-status-actions'
 
 export const metadata: Metadata = {
   title: 'Organização',
@@ -45,6 +49,9 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
   const canActivate =
     summary.access.hasFullAccess ||
     summary.access.permissions.includes(PERMISSIONS.organizationActivate)
+  const canClose =
+    summary.access.hasFullAccess ||
+    summary.access.permissions.includes(PERMISSIONS.organizationClose)
 
   return (
     <main className="space-y-10">
@@ -66,13 +73,23 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
           >
             {summary.organization.status === 'active'
               ? 'Ativa'
-              : 'Em configuração'}
+              : summary.organization.status === 'closed'
+                ? 'Encerrada'
+                : 'Em configuração'}
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
           {summary.organization.acronym}
         </p>
       </header>
+
+      {summary.organization.status === 'closed' ? (
+        <p className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+          Esta organização está encerrada. O acesso é somente para leitura até
+          que alguém com a permissão de encerrar e reabrir a organização a
+          reative.
+        </p>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border bg-background p-5">
@@ -194,12 +211,8 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
       </section>
 
       <section className="space-y-3 rounded-lg border bg-background p-5">
-        <h2 className="font-semibold">Ativação</h2>
-        {summary.organization.status === 'active' ? (
-          <p className="text-sm text-muted-foreground">
-            A organização está ativa.
-          </p>
-        ) : (
+        <h2 className="font-semibold">Situação</h2>
+        {summary.organization.status === 'provisioning' ? (
           <>
             <p className="text-sm text-muted-foreground">
               Antes de ativar, a organização precisa de um cargo padrão ativo,
@@ -217,7 +230,46 @@ async function OrganizationContent({ params }: OrganizationPageProps) {
               </p>
             )}
           </>
-        )}
+        ) : null}
+
+        {summary.organization.status === 'active' ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              A organização está ativa. Encerrá-la mantém os dados e o histórico
+              acessíveis apenas para leitura até uma reabertura.
+            </p>
+            {canClose ? (
+              <CloseOrganizationForm organizationId={summary.organization.id} />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Você não tem permissão para encerrar a organização.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {summary.organization.status === 'closed' ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {summary.organization.closedAt
+                ? `Encerrada em ${new Intl.DateTimeFormat('pt-BR', {
+                    dateStyle: 'short',
+                  }).format(summary.organization.closedAt)}. `
+                : ''}
+              Enquanto estiver encerrada, a organização não aceita convites,
+              novos vínculos ou alterações de configuração.
+            </p>
+            {canClose ? (
+              <ReopenOrganizationForm
+                organizationId={summary.organization.id}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Você não tem permissão para reabrir a organização.
+              </p>
+            )}
+          </div>
+        ) : null}
       </section>
     </main>
   )

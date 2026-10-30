@@ -9,7 +9,11 @@ import {
   rolePermissions,
   roles,
 } from '@/db/schema'
-import { PERMISSION_CATALOG, type PermissionCode } from './permissions'
+import {
+  CLOSED_ORGANIZATION_PERMISSION_CODES,
+  PERMISSION_CATALOG,
+  type PermissionCode,
+} from './permissions'
 
 export type OrganizationAccess = {
   membershipId: string | null
@@ -17,7 +21,7 @@ export type OrganizationAccess = {
   organizationId: string
   userId: string
   roleId: string | null
-  organizationStatus: 'provisioning' | 'active'
+  organizationStatus: 'provisioning' | 'active' | 'closed'
   hasFullAccess: boolean
   canGrantFullAccess: boolean
   permissions: ReadonlySet<PermissionCode>
@@ -74,6 +78,8 @@ export async function getOrganizationAccess(
       permissions = new Set(rows.map(item => item.code as PermissionCode))
     }
 
+    const isClosed = organization.status === 'closed'
+
     return {
       membershipId: row.membershipId,
       provisioningGrantId: null,
@@ -81,9 +87,15 @@ export async function getOrganizationAccess(
       userId,
       roleId: row.roleId,
       organizationStatus: organization.status,
-      hasFullAccess: row.hasFullAccess,
-      canGrantFullAccess: row.hasFullAccess,
-      permissions,
+      hasFullAccess: isClosed ? false : row.hasFullAccess,
+      canGrantFullAccess: isClosed ? false : row.hasFullAccess,
+      permissions: isClosed
+        ? new Set(
+            [...permissions].filter(code =>
+              CLOSED_ORGANIZATION_PERMISSION_CODES.has(code),
+            ),
+          )
+        : permissions,
     }
   }
 

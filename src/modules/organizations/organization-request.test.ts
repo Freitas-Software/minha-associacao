@@ -78,6 +78,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
         cnpj_verified_at timestamptz,
         created_by_user_id uuid NOT NULL,
         activated_at timestamptz,
+        closed_at timestamptz,
         created_at timestamptz DEFAULT now() NOT NULL,
         updated_at timestamptz DEFAULT now() NOT NULL
       );

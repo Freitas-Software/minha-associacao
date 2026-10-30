@@ -5,6 +5,7 @@ import { db } from '@/db'
 import {
   accounts,
   memberships,
+  organizations,
   registrationContactConflicts,
   registrationRequests,
   roles,
@@ -102,6 +103,17 @@ export async function createPreRegistrationLink(
   }
 
   const pendingEmail = await database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization || organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
     const documentNumber = input.person.documentNumber
 
     await tx.execute(sql`

@@ -151,6 +151,7 @@ scripts/               Utilitários operacionais
 - Listagem das organizações da plataforma, com filtro por status e paginação.
 - Envio obrigatório de estatuto e ata de eleição para ativação, com armazenamento privado no Vercel Blob e download autorizado.
 - Auditoria por organização, com permissão `audit.read`, filtro por evento, paginação e detalhes.
+- Encerramento e reabertura auditada da organização, com motivo, revogação dos convites válidos e acesso somente leitura enquanto encerrada.
 
 ## Banco de dados e migrações
 
@@ -183,6 +184,7 @@ Após mudanças de variáveis de ambiente, faça um novo deploy para as funçõe
 
 - [Regras de negócio](docs/regras-de-negocio.md)
 - [Modelo de organizações](docs/organizacoes-modelo.md)
+- [Auditoria de autorização e invariantes](docs/auditoria-autorizacao.md)
 - [Diretrizes de UI/UX e acessibilidade](docs/ui-ux-guidelines.md)
 - [Instruções para agentes](AGENTS.md)
 

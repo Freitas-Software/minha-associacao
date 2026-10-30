@@ -91,7 +91,9 @@ async function OrganizationsContent() {
                 >
                   {organization.status === 'active'
                     ? 'Ativa'
-                    : 'Em configuração'}
+                    : organization.status === 'closed'
+                      ? 'Encerrada'
+                      : 'Em configuração'}
                 </Badge>
               </div>
 

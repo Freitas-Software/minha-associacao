@@ -13,6 +13,7 @@ import {
   revokeInvite,
   validateInviteToken,
 } from './invite.server'
+import { createInviteToken } from './invite-token'
 
 const connectionString = process.env.TEST_DATABASE_URL
 const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
@@ -422,6 +423,14 @@ test('invite domain on PostgreSQL, using temporary tables', {
         { status: 'already-revoked' },
       )
 
+      const revokeAudit = await pool.query(
+        `SELECT id FROM pg_temp.audit_events
+         WHERE action = 'invite.revoked' AND entity_id = $1`,
+        [created.inviteId],
+      )
+
+      assert.equal(revokeAudit.rowCount, 1)
+
       const secondId = await createUser('expired-target')
       const second = await createInvite(
         {
@@ -822,6 +831,113 @@ test('invite domain on PostgreSQL, using temporary tables', {
         )
       },
     )
+
+    await t.test('rejects invites for a closed organization', async () => {
+      const inviteeId = await createUser('closed-invitee')
+      const closedOrganizationId = randomUUID()
+
+      await pool.query(
+        `INSERT INTO pg_temp.organizations
+          (id, cnpj, legal_name, acronym, status, created_by_user_id)
+         VALUES ($1, $2, $3, $4, 'closed', $5)`,
+        [
+          closedOrganizationId,
+          '22333444000181',
+          'Closed Association',
+          'CA',
+          randomUUID(),
+        ],
+      )
+
+      const closedRoleId = await createRole(closedOrganizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+      const { token, tokenHash } = createInviteToken()
+      const closedInviteId = randomUUID()
+
+      await pool.query(
+        `INSERT INTO pg_temp.invites
+          (id, organization_id, role_id, type, token_hash, max_uses,
+           expires_at, created_by_user_id)
+         VALUES ($1, $2, $3, 'shared', $4, null, now() + interval '1 day', $5)`,
+        [
+          closedInviteId,
+          closedOrganizationId,
+          closedRoleId,
+          tokenHash,
+          randomUUID(),
+        ],
+      )
+
+      assert.equal(await validateInviteToken(token, database), null)
+      assert.deepEqual(await acceptInvite(inviteeId, token, database), {
+        status: 'organization-closed',
+      })
+
+      const memberships = await pool.query(
+        'SELECT id FROM pg_temp.memberships WHERE user_id = $1',
+        [inviteeId],
+      )
+
+      assert.equal(memberships.rowCount, 0)
+
+      const managerId = await createUser('closed-manager')
+      const managerRoleId = await createRole(closedOrganizationId, {
+        name: 'Gestor de convites',
+      })
+
+      await pool.query(
+        `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+         VALUES ($1, 'invites.manage')`,
+        [managerRoleId],
+      )
+
+      await createMembership(closedOrganizationId, managerId, managerRoleId)
+
+      assert.deepEqual(
+        await createInvite(
+          {
+            actorUserId: managerId,
+            organizationId: closedOrganizationId,
+            type: 'shared',
+            expiresAt: new Date(Date.now() + DAY_MS),
+          },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await resendInvite(
+          { actorUserId: managerId, inviteId: closedInviteId },
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await revokeInvite(managerId, closedInviteId, database),
+        { status: 'forbidden' },
+      )
+
+      assert.deepEqual(
+        await getInviteManagementData(
+          managerId,
+          closedOrganizationId,
+          {},
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+
+      const untouched = await pool.query<{ revoked_at: Date | null }>(
+        'SELECT revoked_at FROM pg_temp.invites WHERE id = $1',
+        [closedInviteId],
+      )
+
+      assert.equal(untouched.rows[0].revoked_at, null)
+    })
   } finally {
     await pool.end()
   }

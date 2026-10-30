@@ -59,6 +59,15 @@ test('registration completion on PostgreSQL, using temporary tables', {
         invalidated_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+      CREATE TEMP TABLE organizations (
+        id uuid PRIMARY KEY,
+        status varchar(20) NOT NULL
+      );
+      CREATE TEMP TABLE roles (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        is_active boolean NOT NULL DEFAULT true
+      );
       CREATE TEMP TABLE registration_contact_conflicts (
         id uuid PRIMARY KEY,
         user_id uuid NOT NULL,
@@ -73,7 +82,7 @@ test('registration completion on PostgreSQL, using temporary tables', {
 
     async function reset() {
       await pool.query(
-        'TRUNCATE pg_temp.accounts, pg_temp.users, pg_temp.registration_requests, pg_temp.registration_contact_conflicts',
+        'TRUNCATE pg_temp.accounts, pg_temp.users, pg_temp.registration_requests, pg_temp.organizations, pg_temp.roles, pg_temp.registration_contact_conflicts',
       )
     }
 
@@ -84,15 +93,19 @@ test('registration completion on PostgreSQL, using temporary tables', {
       name?: string
       phone?: string
       userId?: string | null
+      organizationId?: string | null
+      roleId?: string | null
       expiresAt?: Date
     }) {
       await pool.query(
         `INSERT INTO pg_temp.registration_requests
-          (id, user_id, name, document_number, email, phone, birth_date, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          (id, user_id, organization_id, role_id, name, document_number, email, phone, birth_date, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           randomUUID(),
           input.userId ?? null,
+          input.organizationId ?? null,
+          input.roleId ?? null,
           input.name ?? 'New Person',
           input.documentNumber,
           input.email,
@@ -354,6 +367,45 @@ test('registration completion on PostgreSQL, using temporary tables', {
       const accounts = await pool.query('SELECT id FROM pg_temp.accounts')
 
       assert.equal(accounts.rowCount, 1)
+    })
+
+    await t.test('rejects activation in a closed organization', async () => {
+      await reset()
+
+      const organizationId = randomUUID()
+      const roleId = randomUUID()
+
+      await pool.query(
+        "INSERT INTO pg_temp.organizations (id, status) VALUES ($1, 'closed')",
+        [organizationId],
+      )
+      await pool.query(
+        'INSERT INTO pg_temp.roles (id, organization_id) VALUES ($1, $2)',
+        [roleId, organizationId],
+      )
+
+      const token = randomBytes(32).toString('base64url')
+
+      await insertRequest({
+        token,
+        documentNumber: '33333333333',
+        email: 'closed.organization@example.test',
+        organizationId,
+        roleId,
+      })
+
+      assert.deepEqual(
+        await completeRegistration({ token, password: NEW_PASSWORD }, database),
+        { status: 'organization-closed' },
+      )
+
+      const counts = await pool.query<{ accounts: number; users: number }>(
+        `SELECT
+          (SELECT count(*)::int FROM pg_temp.accounts) AS accounts,
+          (SELECT count(*)::int FROM pg_temp.users) AS users`,
+      )
+
+      assert.deepEqual(counts.rows[0], { accounts: 0, users: 0 })
     })
 
     await t.test(

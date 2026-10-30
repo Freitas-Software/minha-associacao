@@ -397,6 +397,39 @@ test('role management on PostgreSQL, using temporary tables', {
     })
 
     await t.test(
+      'ignores full-access members whose role is inactive',
+      async () => {
+        const inactiveRoleId = randomUUID()
+
+        await pool.query(
+          `INSERT INTO pg_temp.roles
+            (id, organization_id, name, is_director, has_full_access, is_default, is_active)
+           VALUES ($1, $2, 'Vice-presidente afastado', false, true, false, false)`,
+          [inactiveRoleId, organizationId],
+        )
+
+        await pool.query(
+          `INSERT INTO pg_temp.memberships (id, organization_id, user_id, role_id, status)
+           VALUES ($1, $2, $3, $4, 'active')`,
+          [randomUUID(), organizationId, randomUUID(), inactiveRoleId],
+        )
+
+        assert.deepEqual(
+          await updateRole(
+            {
+              actorUserId,
+              organizationId,
+              roleId: presidentRoleId,
+              role: role({ name: 'Presidente', hasFullAccess: false }),
+            },
+            database,
+          ),
+          { status: 'full-access-required' },
+        )
+      },
+    )
+
+    await t.test(
       'allows removing full access when another full-access member exists',
       async () => {
         const viceRoleId = randomUUID()

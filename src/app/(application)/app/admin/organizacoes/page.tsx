@@ -22,7 +22,7 @@ type AdminOrganizationsPageProps = {
   }>
 }
 
-type OrganizationStatusFilter = 'provisioning' | 'active' | undefined
+type OrganizationStatusFilter = 'provisioning' | 'active' | 'closed' | undefined
 
 const pageSize = 20
 
@@ -33,12 +33,15 @@ const statusTabs: Array<{
   { value: undefined, label: 'Todas' },
   { value: 'provisioning', label: 'Em configuração' },
   { value: 'active', label: 'Ativas' },
+  { value: 'closed', label: 'Encerradas' },
 ]
 
 function resolveStatus(
   value: string | string[] | undefined,
 ): OrganizationStatusFilter {
-  if (value === 'provisioning' || value === 'active') return value
+  if (value === 'provisioning' || value === 'active' || value === 'closed') {
+    return value
+  }
   return undefined
 }
 
@@ -167,7 +170,9 @@ async function AdminOrganizationsContent({
                 >
                   {organization.status === 'active'
                     ? 'Ativa'
-                    : 'Em configuração'}
+                    : organization.status === 'closed'
+                      ? 'Encerrada'
+                      : 'Em configuração'}
                 </Badge>
               </div>
 

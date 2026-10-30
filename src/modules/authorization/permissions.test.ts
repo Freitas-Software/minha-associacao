@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { hasPermission, type OrganizationAccess } from './authorize.server'
 import {
+  CLOSED_ORGANIZATION_PERMISSION_CODES,
   PERMISSION_CATALOG,
   PERMISSION_CODES,
   PERMISSIONS,
@@ -38,6 +39,23 @@ test('full access grants every catalog permission', () => {
   for (const code of PERMISSION_CODES) {
     assert.equal(hasPermission(access, code), true)
   }
+})
+
+test('closed organizations keep only read and closure permissions', () => {
+  const closedPermissions = [...CLOSED_ORGANIZATION_PERMISSION_CODES]
+
+  for (const code of closedPermissions) {
+    assert.ok(PERMISSION_CODES.includes(code))
+  }
+
+  assert.ok(closedPermissions.includes(PERMISSIONS.organizationRead))
+  assert.ok(closedPermissions.includes(PERMISSIONS.organizationClose))
+  assert.ok(closedPermissions.includes(PERMISSIONS.auditRead))
+  assert.ok(!closedPermissions.includes(PERMISSIONS.organizationUpdate))
+  assert.ok(!closedPermissions.includes(PERMISSIONS.organizationActivate))
+  assert.ok(!closedPermissions.includes(PERMISSIONS.rolesManage))
+  assert.ok(!closedPermissions.includes(PERMISSIONS.membersManage))
+  assert.ok(!closedPermissions.includes(PERMISSIONS.invitesManage))
 })
 
 test('explicit permissions grant only their own codes', () => {

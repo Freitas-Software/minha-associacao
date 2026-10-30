@@ -1,6 +1,6 @@
 # Modelo de domínio — organizações, cargos, permissões e convites
 
-**Status:** aprovado para implementação em 27/10/2026. As decisões da seção 8.1 estão confirmadas; resta pendente apenas a decisão sobre estados adicionais da organização (8.2).
+**Status:** aprovado para implementação em 27/10/2026. As decisões da seção 8.1 estão confirmadas; a decisão sobre estados adicionais da organização (8.2) foi resolvida em 29/10/2026.
 
 Este documento registra o modelo aprovado e as decisões ainda abertas. Ele **não substitui** [regras-de-negocio.md](regras-de-negocio.md); onde houver divergência, prevalecem as regras de negócio e a decisão explícita do responsável pelo produto.
 
@@ -63,10 +63,11 @@ Campos propostos:
 - `cnpj` varchar(14), apenas dígitos, único e obrigatório.
 - `legal_name` varchar(255), obtida na consulta externa do CNPJ.
 - `acronym` varchar(32), ajustável pela organização.
-- `status` enum `provisioning | active`, iniciando em `provisioning`.
+- `status` enum `provisioning | active | closed`, iniciando em `provisioning`.
 - `cnpj_verified_at` timestamptz, evidência da validação externa.
 - `created_by_user_id` uuid, referência a `users`, para auditoria.
 - `activated_at` timestamptz, preenchido na ativação.
+- `closed_at` timestamptz, preenchido no encerramento e limpo na reabertura.
 - `created_at` e `updated_at` timestamptz.
 
 Observações:
@@ -74,6 +75,7 @@ Observações:
 - `cnpj` deve ser normalizado antes de persistir.
 - A razão social vem da consulta; a sigla é editável.
 - O status `active` não deve ser revertido para `provisioning` sem uma decisão específica.
+- O status `closed` não exclui dados: a organização permanece legível e pode ser reaberta.
 
 ### 3.3 `roles`
 
@@ -270,6 +272,9 @@ Antes de mudar `status` para `active`, verificar em uma transação:
 - Toda operação deve validar: identidade autenticada, organização de destino, vínculo ativo ou concessão de provisionamento válida, cargo e permissão, propriedade do recurso, estado e invariantes.
 - O servidor é a autoridade; `organizationId` enviado pelo cliente não comprova acesso.
 - Mudanças de cargo ou permissão valem imediatamente nas verificações seguintes, sem novo login.
+- Organização encerrada é somente leitura: vínculos permanecem ativos, as permissões de leitura e `organization.close` continuam valendo e as demais permissões deixam de valer.
+- Organização encerrada não aceita convites, ativação de pré-cadastro, alterações de cargos, membros, configurações ou documentos.
+- Só organização ativa pode ser encerrada. A reabertura usa a mesma permissão e não restaura convites revogados.
 
 ### 4.3 Convites e vínculos
 
@@ -381,12 +386,11 @@ Regras de decisão:
 9. Estatuto e ata de eleição são obrigatórios para ativação. Os arquivos são armazenados privadamente no Vercel Blob, com limite de 3 MB e formatos PDF, JPEG ou PNG.
 10. O CNPJ é elegível quando o CNAE fiscal pertence ao grupo 94 (atividades de associação).
 11. As intervenções da plataforma usam `audit_events`, com ações `platform.*` e metadados padronizados, incluindo a criação da organização e da concessão temporária.
+12. O único estado adicional é `closed`; não há suspensão. O encerramento exige a permissão `organization.close`, motivo e auditoria, só é permitido a partir de `active`, revoga convites válidos e mantém a organização em somente leitura. A reabertura usa a mesma permissão, é auditada e não restaura convites revogados.
 
-### 8.2 Pendentes
+### 8.2 Decisão resolvida em 29/10/2026
 
-Esta decisão bloqueia partes do modelo e não deve ser resolvida por suposição:
-
-1. O status da organização precisa de estados adicionais além de `provisioning` e `active`?
+1. O status da organização não precisa de outros estados além de `provisioning`, `active` e `closed`. Suspensão fica fora do modelo até existir um gatilho confirmado.
 
 ## 9. Riscos e cuidados
 

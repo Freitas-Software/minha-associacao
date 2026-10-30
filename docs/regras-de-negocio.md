@@ -1,6 +1,6 @@
 # Regras de negócio — Associae
 
-Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
+Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Complementadas em 29/10/2026 com as decisões de encerramento de organização. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
 
 ## Escopo e autoridade
 
@@ -57,6 +57,19 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - A organização só se torna operacional quando houver pelo menos um membro ativo com cargo ativo de acesso completo. Não é necessário que todos os demais convites da diretoria tenham sido aceitos.
 - O acesso temporário de configuração termina com a ativação. Não confundir esse acesso com um vínculo permanente ou com acesso completo.
 - Uma organização operacional não pode ficar sem membros ativos com acesso completo. Operações que removam o último precisam aguardar um sucessor ativo.
+
+## Encerramento de organização
+
+Decisão confirmada pelo responsável pelo produto em 29/10/2026.
+
+- O único estado adicional é `closed`; não há estado de suspensão.
+- Somente organização ativa pode ser encerrada. O encerramento exige a permissão `organization.close`, motivo registrado e evento de auditoria.
+- O encerramento não exclui dados, não desativa a pessoa e não encerra vínculos: a organização passa a somente leitura.
+- Em organização encerrada, os vínculos permanecem ativos e mantêm as permissões de leitura e `organization.close`; as permissões de gestão deixam de valer.
+- O encerramento revoga os convites válidos. A reabertura não restaura esses convites.
+- Enquanto encerrada, a organização não aceita convites, não ativa pré-cadastro, não altera cargos, membros, configurações ou documentos.
+- A reabertura usa a mesma permissão, é auditada e devolve a organização ao estado ativo.
+- O encerramento e a reabertura não concedem poderes ao administrador da plataforma.
 
 ## Cargos, permissões e isolamento
 

@@ -2,6 +2,7 @@ export const PERMISSIONS = {
   organizationRead: 'organization.read',
   organizationUpdate: 'organization.update',
   organizationActivate: 'organization.activate',
+  organizationClose: 'organization.close',
   rolesRead: 'roles.read',
   rolesManage: 'roles.manage',
   membersRead: 'members.read',
@@ -16,6 +17,7 @@ export const PERMISSION_CODES = [
   PERMISSIONS.organizationRead,
   PERMISSIONS.organizationUpdate,
   PERMISSIONS.organizationActivate,
+  PERMISSIONS.organizationClose,
   PERMISSIONS.rolesRead,
   PERMISSIONS.rolesManage,
   PERMISSIONS.membersRead,
@@ -23,6 +25,14 @@ export const PERMISSION_CODES = [
   PERMISSIONS.invitesManage,
   PERMISSIONS.auditRead,
 ] as const satisfies readonly PermissionCode[]
+
+export const CLOSED_ORGANIZATION_PERMISSION_CODES = new Set<PermissionCode>([
+  PERMISSIONS.organizationRead,
+  PERMISSIONS.organizationClose,
+  PERMISSIONS.rolesRead,
+  PERMISSIONS.membersRead,
+  PERMISSIONS.auditRead,
+])
 
 export const PERMISSION_CATALOG: ReadonlyArray<{
   code: PermissionCode
@@ -42,6 +52,11 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
   {
     code: PERMISSIONS.organizationActivate,
     description: 'Ativar a organização',
+    category: 'organization',
+  },
+  {
+    code: PERMISSIONS.organizationClose,
+    description: 'Encerrar e reabrir a organização',
     category: 'organization',
   },
   {

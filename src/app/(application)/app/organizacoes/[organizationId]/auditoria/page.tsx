@@ -54,6 +54,8 @@ const actionLabels: Record<string, string> = {
   'organization.created': 'Organização criada',
   'organization.updated': 'Sigla atualizada',
   'organization.activated': 'Organização ativada',
+  'organization.closed': 'Organização encerrada',
+  'organization.reopened': 'Organização reaberta',
   'organization.requested': 'Solicitação de organização',
   'organization.request_approved': 'Solicitação aprovada',
   'organization.request_rejected': 'Solicitação rejeitada',

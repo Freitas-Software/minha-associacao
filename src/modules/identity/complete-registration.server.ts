@@ -5,6 +5,7 @@ import { db } from '@/db'
 import {
   accounts,
   memberships,
+  organizations,
   registrationContactConflicts,
   registrationRequests,
   roles,
@@ -18,6 +19,7 @@ export type CompleteRegistrationResult =
   | { status: 'invalid-link' }
   | { status: 'membership-unavailable' }
   | { status: 'contact-choice-invalid' }
+  | { status: 'organization-closed' }
 
 /**
  * Conclui o cadastro a partir do token enviado por email.
@@ -134,6 +136,17 @@ export async function completeRegistration(
         .limit(1)
 
       if (!role) return { status: 'membership-unavailable' as const }
+
+      const [organization] = await tx
+        .select({ status: organizations.status })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .limit(1)
+        .for('update')
+
+      if (!organization || organization.status === 'closed') {
+        return { status: 'organization-closed' as const }
+      }
 
       if (existingUser) {
         const [existingMembership] = await tx
