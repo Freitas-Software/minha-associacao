@@ -31,6 +31,8 @@ A autenticação é própria, com CPF, Argon2id e sessões opacas persistidas no
 
 ## Configuração local
 
+Node.js 24 é o runtime de produção, do CI e do desenvolvimento; use `nvm use` para respeitar o `.nvmrc`.
+
 ```bash
 pnpm install
 cp .env.example .env.local
@@ -170,13 +172,28 @@ Antes de publicar uma alteração de schema:
 
 ## Deploy
 
-- Aplicação: Vercel.
+- Aplicação: Vercel (projeto `minha-associacao`), runtime Node.js 24.
 - Banco: Neon PostgreSQL.
 - Domínio: `https://www.associae.com.br` (o apex redireciona para `www`).
 - Cron: `/api/cron/cleanup`, diariamente às 03:00, protegido por `CRON_SECRET`.
 - Blob: store privado `associae-documents` em `gru1`, conectado ao projeto; `BLOB_READ_WRITE_TOKEN` é gerenciado pela Vercel.
 - Emails: domínio verificado no Resend e remetente em `EMAIL_FROM`.
 - O primeiro administrador da plataforma precisa ser concedido manualmente com `pnpm platform-admin:grant <email>`; essa conta deve existir antes.
+
+### Ambientes
+
+Cada ambiente usa credenciais próprias; `preview` e `development` nunca apontam para o banco nem para o Blob de produção.
+
+| Variável | `production` | `preview` | `development` |
+|---|---|---|---|
+| `DATABASE_URL` | Neon de produção | banco isolado do ambiente | banco isolado do ambiente |
+| `BLOB_READ_WRITE_TOKEN` | store `associae-documents` | store `associae-documents-dev` | store `associae-documents-dev` |
+| `APP_URL` | `https://www.associae.com.br` | URL do deployment | `http://localhost:3000` |
+| `RESEND_API_KEY` | chave de produção | chave restrita ao domínio | chave restrita ao domínio |
+| `EMAIL_FROM` | remetente verificado | remetente verificado | remetente verificado |
+| `CRON_SECRET` | segredo de produção | segredo próprio | segredo próprio |
+
+O ambiente `development` da Vercel é o que `vercel dev` e `vercel env pull` consomem. `TEST_DATABASE_URL` e `E2E_DATABASE_URL` existem apenas na máquina de desenvolvimento e não devem ser cadastradas na Vercel.
 
 Após mudanças de variáveis de ambiente, faça um novo deploy para as funções usarem os valores atualizados.
 

@@ -53,5 +53,8 @@
     "typescript": "^5",
     "vercel": "^64.5.0"
   },
-  "packageManager": "pnpm@12.11.2"
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": "24.x"
+  }
 }
