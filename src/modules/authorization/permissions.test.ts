@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { hasPermission, type OrganizationAccess } from './authorize.server'
 import {
   CLOSED_ORGANIZATION_PERMISSION_CODES,

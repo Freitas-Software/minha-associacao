@@ -25,6 +25,7 @@ import {
 } from '@/modules/organizations/organization.schema'
 import {
   activateOrganization,
+  changeDefaultRole,
   closeOrganization,
   createRole,
   deactivateMembership,
@@ -144,6 +145,12 @@ export async function createInviteAction(
           status: 'error',
           message: 'Informe um limite de usos válido.',
         }
+      case 'self-target-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você tem uma concessão temporária de configuração nesta organização e não pode convidar o seu próprio CPF.',
+        }
     }
   } catch {
     console.error('[createInviteAction]', { stage: 'create' })
@@ -260,6 +267,14 @@ export async function acceptInviteAction(
       return {
         status: 'error',
         message: 'A organização deste convite foi encerrada.',
+      }
+    }
+
+    if (result.status === 'self-invite-not-allowed') {
+      return {
+        status: 'error',
+        message:
+          'Você tem uma concessão temporária de configuração nesta organização e não pode ingressar como membro enquanto ela estiver ativa.',
       }
     }
 
@@ -588,6 +603,14 @@ export async function requestOrganizationAction(
   const acronym = readText(formData, 'acronym')
   const document = formData.get('document')
 
+  if (formData.get('presidentDeclaration') !== 'on') {
+    return {
+      status: 'error',
+      message:
+        'Declare que você é o presidente desta associação para enviar a solicitação.',
+    }
+  }
+
   if (!(document instanceof File) || document.size === 0) {
     return {
       status: 'error',
@@ -653,6 +676,12 @@ export async function requestOrganizationAction(
         return {
           status: 'error',
           message: 'Já existe uma solicitação pendente para este CNPJ.',
+        }
+      case 'rate-limited':
+        return {
+          status: 'error',
+          message:
+            'Você atingiu o limite de solicitações. Conclua ou aguarde a análise das solicitações existentes.',
         }
       case 'lookup-failed':
         return { status: 'error', message: result.message }
@@ -831,6 +860,12 @@ export async function deactivateMembershipAction(
         return { status: 'error', message: 'Vínculo não encontrado.' }
       case 'already-inactive':
         return { status: 'error', message: 'Este vínculo já está inativo.' }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você não pode administrar vínculos cujo cargo atual tenha permissões que você não possui.',
+        }
       case 'last-full-access-member':
         return {
           status: 'error',
@@ -974,6 +1009,82 @@ export async function updateRoleAction(
   }
 }
 
+export async function changeDefaultRoleAction(
+  _previousState: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await requireSession()
+  const organizationId = readText(formData, 'organizationId')
+  const roleId = readText(formData, 'roleId')
+
+  if (
+    !z.uuid().safeParse(organizationId).success ||
+    !z.uuid().safeParse(roleId).success
+  ) {
+    return { status: 'error', message: 'Organização ou cargo inválido.' }
+  }
+
+  try {
+    const result = await changeDefaultRole({
+      actorUserId: session.userId,
+      organizationId,
+      roleId,
+    })
+
+    if (result.status === 'changed') {
+      revalidatePath(`/app/organizacoes/${organizationId}`)
+      revalidatePath(`/app/organizacoes/${organizationId}/cargos`)
+      return { status: 'success', message: 'Cargo padrão atualizado.' }
+    }
+
+    switch (result.status) {
+      case 'unchanged':
+        return {
+          status: 'success',
+          message: 'Este cargo já é o cargo padrão de ingresso.',
+        }
+      case 'forbidden':
+        return {
+          status: 'error',
+          message: 'Você não tem permissão para trocar o cargo padrão.',
+        }
+      case 'not-found':
+        return {
+          status: 'error',
+          message: 'Organização ou cargo não encontrado.',
+        }
+      case 'invalid-role':
+        return {
+          status: 'error',
+          message: 'O cargo precisa estar ativo nesta organização.',
+        }
+      case 'invalid-default-role':
+        return {
+          status: 'error',
+          message:
+            'O cargo padrão não pode ser de diretoria nem de acesso completo.',
+        }
+      case 'role-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você só pode definir como padrão um cargo com permissões que você mesmo possui.',
+        }
+    }
+
+    return {
+      status: 'error',
+      message: 'Não foi possível trocar o cargo padrão agora.',
+    }
+  } catch {
+    console.error('[changeDefaultRoleAction]', { stage: 'change-default' })
+    return {
+      status: 'error',
+      message: 'Não foi possível trocar o cargo padrão agora.',
+    }
+  }
+}
+
 export async function requestPreRegistrationAction(
   _previousState: OrganizationActionState,
   formData: FormData,
@@ -1056,6 +1167,12 @@ export async function requestPreRegistrationAction(
         }
       case 'not-found':
         return { status: 'error', message: 'Pessoa não encontrada.' }
+      case 'self-target-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você tem uma concessão temporária de configuração nesta organização e não pode pré-cadastrar o seu próprio CPF.',
+        }
     }
 
     return {
@@ -1267,6 +1384,12 @@ export async function resendPreRegistrationAction(
         }
       case 'not-found':
         return { status: 'error', message: 'Pré-cadastro não encontrado.' }
+      case 'self-target-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você tem uma concessão temporária de configuração nesta organização e não pode reenviar o pré-cadastro do seu próprio CPF.',
+        }
     }
 
     return {
@@ -1342,6 +1465,12 @@ export async function resendInviteAction(
           status: 'error',
           message:
             'Você só pode reenviar convites para cargos com permissões que você possui.',
+        }
+      case 'self-target-not-allowed':
+        return {
+          status: 'error',
+          message:
+            'Você tem uma concessão temporária de configuração nesta organização e não pode reenviar um convite para o seu próprio CPF.',
         }
     }
 

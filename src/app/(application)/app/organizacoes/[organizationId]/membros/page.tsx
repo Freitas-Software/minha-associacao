@@ -269,7 +269,9 @@ async function MembersContent({ params, searchParams }: MembersPageProps) {
                 />
               ) : null}
 
-              {member.status === 'active' && canManage ? (
+              {member.status === 'active' &&
+              canManage &&
+              assignableRoles.some(role => role.id === member.roleId) ? (
                 <DeactivateMemberForm
                   organizationId={summary.organization.id}
                   membershipId={member.membershipId}

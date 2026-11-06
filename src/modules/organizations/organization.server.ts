@@ -1,5 +1,16 @@
 import 'server-only'
-import { and, desc, eq, gt, ilike, isNull, lt, ne, or } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  or,
+} from 'drizzle-orm'
 import { db } from '@/db'
 import {
   invites,
@@ -491,6 +502,38 @@ export async function activateOrganization(
       .set({ status: 'active', activatedAt: now, updatedAt: now })
       .where(eq(organizations.id, organizationId))
 
+    const granteeDocuments = await tx
+      .select({ documentNumber: users.documentNumber })
+      .from(provisioningGrants)
+      .innerJoin(users, eq(users.id, provisioningGrants.userId))
+      .where(
+        and(
+          eq(provisioningGrants.organizationId, organizationId),
+          isNull(provisioningGrants.revokedAt),
+        ),
+      )
+
+    let revokedGranteeInvites = 0
+
+    if (granteeDocuments.length > 0) {
+      const revoked = await tx
+        .update(invites)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(invites.organizationId, organizationId),
+            isNull(invites.revokedAt),
+            inArray(
+              invites.documentNumber,
+              granteeDocuments.map(grantee => grantee.documentNumber),
+            ),
+          ),
+        )
+        .returning({ id: invites.id })
+
+      revokedGranteeInvites = revoked.length
+    }
+
     await tx
       .update(provisioningGrants)
       .set({ revokedAt: now })
@@ -507,6 +550,7 @@ export async function activateOrganization(
       action: 'organization.activated',
       entityType: 'organization',
       entityId: organizationId,
+      metadata: { revokedGranteeInvites },
     })
 
     return { status: 'activated' as const }
@@ -649,6 +693,7 @@ export type DeactivateMembershipResult =
   | { status: 'forbidden' }
   | { status: 'not-found' }
   | { status: 'already-inactive' }
+  | { status: 'role-not-allowed' }
   | { status: 'last-full-access-member' }
 
 export async function deactivateMembership(
@@ -699,7 +744,7 @@ export async function deactivateMembership(
         id: memberships.id,
         status: memberships.status,
         roleId: memberships.roleId,
-        hasFullAccess: roles.hasFullAccess,
+        currentHasFullAccess: roles.hasFullAccess,
       })
       .from(memberships)
       .innerJoin(
@@ -718,7 +763,20 @@ export async function deactivateMembership(
       return { status: 'already-inactive' as const }
     }
 
-    if (membership.hasFullAccess) {
+    if (
+      !(await canGrantRole(
+        access,
+        {
+          id: membership.roleId,
+          hasFullAccess: membership.currentHasFullAccess,
+        },
+        tx,
+      ))
+    ) {
+      return { status: 'role-not-allowed' as const }
+    }
+
+    if (membership.currentHasFullAccess) {
       const others = await tx
         .select({ id: memberships.id })
         .from(memberships)
@@ -1307,6 +1365,119 @@ export async function updateRole(
   }
 }
 
+export type ChangeDefaultRoleResult =
+  | { status: 'changed'; previousRoleId: string | null }
+  | { status: 'unchanged' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'invalid-role' }
+  | { status: 'invalid-default-role' }
+  | { status: 'role-not-allowed' }
+
+export async function changeDefaultRole(
+  input: {
+    actorUserId: string
+    organizationId: string
+    roleId: string
+  },
+  database: typeof db = db,
+): Promise<ChangeDefaultRoleResult> {
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    input.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.rolesManage)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
+    const [role] = await tx
+      .select({
+        id: roles.id,
+        isDirector: roles.isDirector,
+        hasFullAccess: roles.hasFullAccess,
+        isDefault: roles.isDefault,
+        isActive: roles.isActive,
+      })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, input.roleId),
+          eq(roles.organizationId, input.organizationId),
+        ),
+      )
+      .limit(1)
+      .for('update')
+
+    if (!role?.isActive) return { status: 'invalid-role' as const }
+    if (role.isDefault) return { status: 'unchanged' as const }
+    if (role.isDirector || role.hasFullAccess) {
+      return { status: 'invalid-default-role' as const }
+    }
+
+    if (!(await canGrantRole(access, role, tx))) {
+      return { status: 'role-not-allowed' as const }
+    }
+
+    const [currentDefault] = await tx
+      .select({ id: roles.id })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.organizationId, input.organizationId),
+          eq(roles.isDefault, true),
+        ),
+      )
+      .limit(1)
+      .for('update')
+
+    const now = new Date()
+
+    if (currentDefault) {
+      await tx
+        .update(roles)
+        .set({ isDefault: false, updatedAt: now })
+        .where(eq(roles.id, currentDefault.id))
+    }
+
+    await tx
+      .update(roles)
+      .set({ isDefault: true, updatedAt: now })
+      .where(eq(roles.id, role.id))
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: input.organizationId,
+      action: 'role.default_changed',
+      entityType: 'role',
+      entityId: role.id,
+      metadata: {
+        fromRoleId: currentDefault?.id ?? null,
+        toRoleId: role.id,
+      },
+    })
+
+    return {
+      status: 'changed' as const,
+      previousRoleId: currentDefault?.id ?? null,
+    }
+  })
+}
+
 export type AssignableRole = {
   id: string
   name: string
@@ -1442,6 +1613,19 @@ export async function updateMembershipRole(
 
     if (membership.status === 'inactive') {
       return { status: 'inactive-membership' as const }
+    }
+
+    if (
+      !(await canGrantRole(
+        access,
+        {
+          id: membership.roleId,
+          hasFullAccess: membership.currentHasFullAccess,
+        },
+        tx,
+      ))
+    ) {
+      return { status: 'role-not-allowed' as const }
     }
 
     const [newRole] = await tx

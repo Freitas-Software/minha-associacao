@@ -39,6 +39,7 @@ export type PreRegistrationLinkResult =
   | { status: 'already-member' }
   | { status: 'rate-limited' }
   | { status: 'not-found' }
+  | { status: 'self-target-not-allowed' }
 
 export type PreRegistrationResult =
   | {
@@ -53,6 +54,7 @@ export type PreRegistrationResult =
   | { status: 'already-member' }
   | { status: 'rate-limited' }
   | { status: 'not-found' }
+  | { status: 'self-target-not-allowed' }
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -79,6 +81,22 @@ export async function createPreRegistrationLink(
 
   if (!access || !hasPermission(access, PERMISSIONS.membersManage)) {
     return { status: 'forbidden' }
+  }
+
+  if (access.provisioningGrantId) {
+    const [actor] = await database
+      .select({ documentNumber: users.documentNumber })
+      .from(users)
+      .where(eq(users.id, input.actorUserId))
+      .limit(1)
+
+    if (
+      actor &&
+      actor.documentNumber.replaceAll(/\D/g, '') ===
+        input.person.documentNumber.replaceAll(/\D/g, '')
+    ) {
+      return { status: 'self-target-not-allowed' }
+    }
   }
 
   const [role] = await database

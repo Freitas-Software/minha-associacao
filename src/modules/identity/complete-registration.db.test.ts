@@ -1,30 +1,33 @@
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
-import test from 'node:test'
+import { describeDatabase } from '@tests/support/database-suite'
 import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
+import { afterAll, beforeAll, it } from 'vitest'
 import * as schema from '@/db/schema'
 import { completeRegistration } from './complete-registration.server'
 import { hashRegistrationToken } from './registration-token.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
-const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
 
 const NEW_PASSWORD = 'correct horse battery staple'
 
-test('registration completion on PostgreSQL, using temporary tables', {
-  skip: !connectionString || !runDatabaseTests,
-}, async t => {
-  const pool = new Pool({
-    connectionString,
-    max: 1,
-    connectionTimeoutMillis: 3000,
-  })
-  const database = drizzle({ client: pool, relations: defineRelations(schema) })
+describeDatabase(
+  'registration completion on PostgreSQL, using temporary tables',
+  () => {
+    const pool = new Pool({
+      connectionString,
+      max: 1,
+      connectionTimeoutMillis: 3000,
+    })
+    const database = drizzle({
+      client: pool,
+      relations: defineRelations(schema),
+    })
 
-  try {
-    await pool.query(`
+    beforeAll(async () => {
+      await pool.query(`
       CREATE TEMP TABLE accounts (
         id uuid PRIMARY KEY,
         login text UNIQUE NOT NULL,
@@ -79,6 +82,7 @@ test('registration completion on PostgreSQL, using temporary tables', {
         resolved_at timestamptz
       )
     `)
+    })
 
     async function reset() {
       await pool.query(
@@ -143,181 +147,160 @@ test('registration completion on PostgreSQL, using temporary tables', {
       return id
     }
 
-    await t.test(
-      'creates an account and a verified user for a new person',
-      async () => {
-        await reset()
+    it('creates an account and a verified user for a new person', async () => {
+      await reset()
 
-        const token = randomBytes(32).toString('base64url')
-        const documentNumber = '11111111111'
-        const email = 'new.person@example.test'
+      const token = randomBytes(32).toString('base64url')
+      const documentNumber = '11111111111'
+      const email = 'new.person@example.test'
 
-        await insertRequest({ token, documentNumber, email })
+      await insertRequest({ token, documentNumber, email })
 
-        const result = await completeRegistration(
-          { token, password: NEW_PASSWORD },
-          database,
-        )
+      const result = await completeRegistration(
+        { token, password: NEW_PASSWORD },
+        database,
+      )
 
-        assert.deepEqual(result, { status: 'completed' })
+      assert.deepEqual(result, { status: 'completed' })
 
-        const accounts = await pool.query<{
-          id: string
-          login: string
-          password_hash: string
-        }>('SELECT id, login, password_hash FROM pg_temp.accounts')
+      const accounts = await pool.query<{
+        id: string
+        login: string
+        password_hash: string
+      }>('SELECT id, login, password_hash FROM pg_temp.accounts')
 
-        assert.equal(accounts.rowCount, 1)
-        assert.equal(accounts.rows[0].login, documentNumber)
-        assert.ok(accounts.rows[0].password_hash.startsWith('$argon2id$'))
-        assert.notEqual(accounts.rows[0].password_hash, NEW_PASSWORD)
+      assert.equal(accounts.rowCount, 1)
+      assert.equal(accounts.rows[0].login, documentNumber)
+      assert.ok(accounts.rows[0].password_hash.startsWith('$argon2id$'))
+      assert.notEqual(accounts.rows[0].password_hash, NEW_PASSWORD)
 
-        const users = await pool.query<{
-          account_id: string
-          name: string
-          document_number: string
-          email: string
-          email_verified_at: Date | null
-        }>(
-          'SELECT "accountId" AS account_id, name, document_number, email, email_verified_at FROM pg_temp.users',
-        )
+      const users = await pool.query<{
+        account_id: string
+        name: string
+        document_number: string
+        email: string
+        email_verified_at: Date | null
+      }>(
+        'SELECT "accountId" AS account_id, name, document_number, email, email_verified_at FROM pg_temp.users',
+      )
 
-        assert.equal(users.rowCount, 1)
-        assert.equal(users.rows[0].account_id, accounts.rows[0].id)
-        assert.equal(users.rows[0].name, 'New Person')
-        assert.equal(users.rows[0].document_number, documentNumber)
-        assert.equal(users.rows[0].email, email)
-        assert.ok(users.rows[0].email_verified_at)
+      assert.equal(users.rowCount, 1)
+      assert.equal(users.rows[0].account_id, accounts.rows[0].id)
+      assert.equal(users.rows[0].name, 'New Person')
+      assert.equal(users.rows[0].document_number, documentNumber)
+      assert.equal(users.rows[0].email, email)
+      assert.ok(users.rows[0].email_verified_at)
 
-        const requests = await pool.query<{
-          consumed_at: Date | null
-        }>('SELECT consumed_at FROM pg_temp.registration_requests')
+      const requests = await pool.query<{
+        consumed_at: Date | null
+      }>('SELECT consumed_at FROM pg_temp.registration_requests')
 
-        assert.equal(requests.rowCount, 1)
-        assert.ok(requests.rows[0].consumed_at)
+      assert.equal(requests.rowCount, 1)
+      assert.ok(requests.rows[0].consumed_at)
 
-        assert.deepEqual(
-          await completeRegistration(
-            { token, password: NEW_PASSWORD },
-            database,
-          ),
-          { status: 'invalid-link' },
-        )
+      assert.deepEqual(
+        await completeRegistration({ token, password: NEW_PASSWORD }, database),
+        { status: 'invalid-link' },
+      )
 
-        const counts = await pool.query<{ accounts: number; users: number }>(
-          `SELECT
+      const counts = await pool.query<{ accounts: number; users: number }>(
+        `SELECT
           (SELECT count(*)::int FROM pg_temp.accounts) AS accounts,
           (SELECT count(*)::int FROM pg_temp.users) AS users`,
-        )
+      )
 
-        assert.deepEqual(counts.rows[0], { accounts: 1, users: 1 })
-      },
-    )
+      assert.deepEqual(counts.rows[0], { accounts: 1, users: 1 })
+    })
 
-    await t.test(
-      'links a pre-registered user without duplicating the profile',
-      async () => {
-        await reset()
+    it('links a pre-registered user without duplicating the profile', async () => {
+      await reset()
 
-        const token = randomBytes(32).toString('base64url')
-        const documentNumber = '22222222222'
-        const email = 'pre.registered@example.test'
-        const userId = await insertUser({ documentNumber, email })
+      const token = randomBytes(32).toString('base64url')
+      const documentNumber = '22222222222'
+      const email = 'pre.registered@example.test'
+      const userId = await insertUser({ documentNumber, email })
 
-        await insertRequest({
-          token,
-          documentNumber,
-          email,
-          userId,
-          name: 'Ignored Name',
-        })
+      await insertRequest({
+        token,
+        documentNumber,
+        email,
+        userId,
+        name: 'Ignored Name',
+      })
 
-        const result = await completeRegistration(
-          { token, password: NEW_PASSWORD },
-          database,
-        )
+      const result = await completeRegistration(
+        { token, password: NEW_PASSWORD },
+        database,
+      )
 
-        assert.deepEqual(result, { status: 'completed' })
+      assert.deepEqual(result, { status: 'completed' })
 
-        const users = await pool.query<{
-          account_id: string | null
-          name: string
-          email_verified_at: Date | null
-        }>(
-          'SELECT "accountId" AS account_id, name, email_verified_at FROM pg_temp.users',
-        )
+      const users = await pool.query<{
+        account_id: string | null
+        name: string
+        email_verified_at: Date | null
+      }>(
+        'SELECT "accountId" AS account_id, name, email_verified_at FROM pg_temp.users',
+      )
 
-        assert.equal(users.rowCount, 1)
-        assert.equal(users.rows[0].name, 'Pre Registered')
-        assert.ok(users.rows[0].account_id)
-        assert.ok(users.rows[0].email_verified_at)
+      assert.equal(users.rowCount, 1)
+      assert.equal(users.rows[0].name, 'Pre Registered')
+      assert.ok(users.rows[0].account_id)
+      assert.ok(users.rows[0].email_verified_at)
 
-        const accounts = await pool.query('SELECT id FROM pg_temp.accounts')
+      const accounts = await pool.query('SELECT id FROM pg_temp.accounts')
 
-        assert.equal(accounts.rowCount, 1)
-        assert.equal(users.rows[0].account_id, accounts.rows[0].id)
-      },
-    )
+      assert.equal(accounts.rowCount, 1)
+      assert.equal(users.rows[0].account_id, accounts.rows[0].id)
+    })
 
-    await t.test(
-      'rejects a request linked to a different profile',
-      async () => {
-        await reset()
+    it('rejects a request linked to a different profile', async () => {
+      await reset()
 
-        const token = randomBytes(32).toString('base64url')
-        const documentNumber = '33333333333'
-        const email = 'profile@example.test'
+      const token = randomBytes(32).toString('base64url')
+      const documentNumber = '33333333333'
+      const email = 'profile@example.test'
 
-        await insertUser({ documentNumber, email })
-        await insertRequest({
-          token,
-          documentNumber,
-          email,
-          userId: randomUUID(),
-        })
+      await insertUser({ documentNumber, email })
+      await insertRequest({
+        token,
+        documentNumber,
+        email,
+        userId: randomUUID(),
+      })
 
-        assert.deepEqual(
-          await completeRegistration(
-            { token, password: NEW_PASSWORD },
-            database,
-          ),
-          { status: 'invalid-link' },
-        )
+      assert.deepEqual(
+        await completeRegistration({ token, password: NEW_PASSWORD }, database),
+        { status: 'invalid-link' },
+      )
 
-        const accounts = await pool.query('SELECT id FROM pg_temp.accounts')
+      const accounts = await pool.query('SELECT id FROM pg_temp.accounts')
 
-        assert.equal(accounts.rowCount, 0)
-      },
-    )
+      assert.equal(accounts.rowCount, 0)
+    })
 
-    await t.test(
-      'rejects a request when the profile email changed',
-      async () => {
-        await reset()
+    it('rejects a request when the profile email changed', async () => {
+      await reset()
 
-        const token = randomBytes(32).toString('base64url')
-        const documentNumber = '44444444444'
-        const email = 'old@example.test'
-        const userId = await insertUser({ documentNumber, email })
+      const token = randomBytes(32).toString('base64url')
+      const documentNumber = '44444444444'
+      const email = 'old@example.test'
+      const userId = await insertUser({ documentNumber, email })
 
-        await insertRequest({
-          token,
-          documentNumber,
-          email: 'new@example.test',
-          userId,
-        })
+      await insertRequest({
+        token,
+        documentNumber,
+        email: 'new@example.test',
+        userId,
+      })
 
-        assert.deepEqual(
-          await completeRegistration(
-            { token, password: NEW_PASSWORD },
-            database,
-          ),
-          { status: 'invalid-link' },
-        )
-      },
-    )
+      assert.deepEqual(
+        await completeRegistration({ token, password: NEW_PASSWORD }, database),
+        { status: 'invalid-link' },
+      )
+    })
 
-    await t.test('rejects expired tokens and existing accounts', async () => {
+    it('rejects expired tokens and existing accounts', async () => {
       await reset()
 
       const expiredToken = randomBytes(32).toString('base64url')
@@ -369,7 +352,7 @@ test('registration completion on PostgreSQL, using temporary tables', {
       assert.equal(accounts.rowCount, 1)
     })
 
-    await t.test('rejects activation in a closed organization', async () => {
+    it('rejects activation in a closed organization', async () => {
       await reset()
 
       const organizationId = randomUUID()
@@ -408,32 +391,31 @@ test('registration completion on PostgreSQL, using temporary tables', {
       assert.deepEqual(counts.rows[0], { accounts: 0, users: 0 })
     })
 
-    await t.test(
-      'rejects an unknown token without creating records',
-      async () => {
-        await reset()
+    it('rejects an unknown token without creating records', async () => {
+      await reset()
 
-        assert.deepEqual(
-          await completeRegistration(
-            {
-              token: randomBytes(32).toString('base64url'),
-              password: NEW_PASSWORD,
-            },
-            database,
-          ),
-          { status: 'invalid-link' },
-        )
+      assert.deepEqual(
+        await completeRegistration(
+          {
+            token: randomBytes(32).toString('base64url'),
+            password: NEW_PASSWORD,
+          },
+          database,
+        ),
+        { status: 'invalid-link' },
+      )
 
-        const counts = await pool.query<{ accounts: number; users: number }>(
-          `SELECT
+      const counts = await pool.query<{ accounts: number; users: number }>(
+        `SELECT
           (SELECT count(*)::int FROM pg_temp.accounts) AS accounts,
           (SELECT count(*)::int FROM pg_temp.users) AS users`,
-        )
+      )
 
-        assert.deepEqual(counts.rows[0], { accounts: 0, users: 0 })
-      },
-    )
-  } finally {
-    await pool.end()
-  }
-})
+      assert.deepEqual(counts.rows[0], { accounts: 0, users: 0 })
+    })
+
+    afterAll(async () => {
+      await pool.end()
+    })
+  },
+)

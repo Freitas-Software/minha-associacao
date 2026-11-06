@@ -129,11 +129,12 @@ Also verify manually:
 - Screen-reader labels and error announcements for the changed forms.
 - No horizontal overflow with long names, emails, file names, and invite URLs.
 
-Automated browser tooling (Playwright/axe) is not currently installed. Do not claim full WCAG conformance based on static analysis. Record any manual checks that were not performed.
+Automated browser tooling (Playwright/axe) covers the public landing page and the main authentication and organization flows. Do not claim full WCAG conformance based on automated checks alone. Record any manual checks that were not performed.
 
 ## Current limitations
 
-- The browser-based accessibility sweep was not automated because no Playwright/axe/lighthouse infrastructure is installed in the repository.
-- PostgreSQL integration tests are skipped unless `RUN_DATABASE_TESTS=1` and `TEST_DATABASE_URL` are configured.
+- The automated axe sweep ignores `color-contrast` until the visual tokens are revised; structural and semantic rules are blocking.
+- PostgreSQL integration tests are skipped when `TEST_DATABASE_URL` is not configured; `pnpm test:integration` requires it.
+- Browser component tests and Playwright E2E require `pnpm exec playwright install chromium` on a new machine.
 - The display timezone for human-readable dates is the server environment timezone. A product decision is still needed if dates must be shown in a specific Brazilian timezone.
 - Unknown URLs under `/app` use the global 404; `notFound()` inside a matched app route uses the app 404.

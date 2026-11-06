@@ -20,6 +20,7 @@ import {
   invites,
   memberships,
   organizations,
+  provisioningGrants,
   rolePermissions,
   roles,
   users,
@@ -59,9 +60,23 @@ export type CreateInviteResult =
   | { status: 'invalid-document' }
   | { status: 'invalid-expiry' }
   | { status: 'invalid-max-uses' }
+  | { status: 'self-target-not-allowed' }
 
 function normalizeDocument(value: string): string {
   return value.replaceAll(/\D/g, '')
+}
+
+async function getActorDocumentNumber(
+  actorUserId: string,
+  database: typeof db,
+): Promise<string | null> {
+  const [actor] = await database
+    .select({ documentNumber: users.documentNumber })
+    .from(users)
+    .where(eq(users.id, actorUserId))
+    .limit(1)
+
+  return actor?.documentNumber ?? null
 }
 
 export async function createInvite(
@@ -97,6 +112,17 @@ export async function createInvite(
 
   if (maxUses !== null && maxUses <= 0) {
     return { status: 'invalid-max-uses' }
+  }
+
+  if (input.type === 'individual' && access.provisioningGrantId) {
+    const actorDocument = await getActorDocumentNumber(
+      input.actorUserId,
+      database,
+    )
+
+    if (actorDocument && normalizeDocument(actorDocument) === documentNumber) {
+      return { status: 'self-target-not-allowed' }
+    }
   }
 
   let role: {
@@ -222,6 +248,7 @@ export type ResendInviteResult =
   | { status: 'rate-limited' }
   | { status: 'invalid-role' }
   | { status: 'role-not-allowed' }
+  | { status: 'self-target-not-allowed' }
 
 export async function resendInvite(
   input: {
@@ -258,6 +285,21 @@ export async function resendInvite(
   }
 
   if (invite.revokedAt) return { status: 'already-revoked' }
+
+  if (invite.type === 'individual' && access.provisioningGrantId) {
+    const actorDocument = await getActorDocumentNumber(
+      input.actorUserId,
+      database,
+    )
+
+    if (
+      actorDocument &&
+      normalizeDocument(invite.documentNumber ?? '') ===
+        normalizeDocument(actorDocument)
+    ) {
+      return { status: 'self-target-not-allowed' }
+    }
+  }
 
   const now = new Date()
 
@@ -488,6 +530,7 @@ export type AcceptInviteResult =
   | { status: 'account-unverified' }
   | { status: 'invalid-role' }
   | { status: 'organization-closed' }
+  | { status: 'self-invite-not-allowed' }
 
 export async function acceptInvite(
   userId: string,
@@ -557,6 +600,20 @@ export async function acceptInvite(
     if (!organization || organization.status === 'closed') {
       return { status: 'organization-closed' as const }
     }
+
+    const [grant] = await tx
+      .select({ id: provisioningGrants.id })
+      .from(provisioningGrants)
+      .where(
+        and(
+          eq(provisioningGrants.organizationId, invite.organizationId),
+          eq(provisioningGrants.userId, user.id),
+          isNull(provisioningGrants.revokedAt),
+        ),
+      )
+      .limit(1)
+
+    if (grant) return { status: 'self-invite-not-allowed' as const }
 
     const [existingMembership] = await tx
       .select({ id: memberships.id, status: memberships.status })

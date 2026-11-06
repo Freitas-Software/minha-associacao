@@ -62,8 +62,8 @@ A aplicação fica em `http://localhost:3000`.
 | Variável | Uso |
 |---|---|
 | `DATABASE_URL` | Conexão PostgreSQL da aplicação |
-| `TEST_DATABASE_URL` | Conexão usada pelos testes de integração |
-| `RUN_DATABASE_TESTS` | `1` habilita os testes que usam PostgreSQL |
+| `TEST_DATABASE_URL` | Banco dedicado dos testes de integração e do Vitest Browser Mode |
+| `E2E_DATABASE_URL` | Banco dedicado do Playwright (padrão: `TEST_DATABASE_URL`) |
 | `APP_URL` | URL pública usada nos links de email |
 | `RESEND_API_KEY` | Chave da API do Resend |
 | `EMAIL_FROM` | Remetente verificado, ex.: `Associae <no-reply@associae.com.br>` |
@@ -84,22 +84,29 @@ Nunca versionar `.env.local` ou credenciais reais. Fora do desenvolvimento local
 | `pnpm check` | Biome: lint, formato e imports |
 | `pnpm lint` / `pnpm format` | Lint e formatação isolados |
 | `pnpm test` | Testes unitários e de integração |
+| `pnpm test:unit` | Somente testes unitários |
+| `pnpm test:integration` | Testes de integração com PostgreSQL |
+| `pnpm test:browser` | Componentes em navegador real (Vitest Browser Mode) |
+| `pnpm test:e2e` | Fluxos completos com Playwright |
+| `pnpm test:e2e:dev` | Playwright contra o servidor de desenvolvimento |
+| `pnpm test:coverage` | Cobertura V8 em `coverage/` |
 | `pnpm db:migrate` | Aplica migrações pendentes |
 | `pnpm platform-admin:grant <email>` | Concede acesso de administrador da plataforma a um usuário existente |
 
 ## Testes
 
-```bash
-pnpm test
-```
-
-Os testes de integração usam tabelas temporárias e só rodam quando `RUN_DATABASE_TESTS=1` e `TEST_DATABASE_URL` estão definidos:
+A suíte usa quatro camadas: unitários e integração com Vitest, componentes em navegador real com Vitest Browser Mode e fluxos completos com Playwright. O guia completo está em [docs/testes.md](docs/testes.md).
 
 ```bash
-RUN_DATABASE_TESTS=1 pnpm test
+cp .env.example .env.local
+pnpm exec playwright install chromium
+
+pnpm test          # unitários + integração
+pnpm test:browser  # componentes no navegador
+pnpm test:e2e      # build de produção + banco real
 ```
 
-O CI sobe um PostgreSQL e executa a suíte completa. Testes que dependem de banco não devem ser marcados como opcionais no CI.
+Os testes usam um banco dedicado em `TEST_DATABASE_URL`. O schema é recriado a partir das migrações antes da execução e recusa bancos cujo nome não contenha `test`. O CI sobe um PostgreSQL separado e executa todos os níveis.
 
 ## Arquitetura
 
@@ -189,7 +196,7 @@ Cada ambiente usa credenciais próprias; `preview` e `development` nunca apontam
 | `DATABASE_URL` | Neon de produção | banco isolado do ambiente | banco isolado do ambiente |
 | `BLOB_READ_WRITE_TOKEN` | store `associae-documents` | store `associae-documents-dev` | store `associae-documents-dev` |
 | `APP_URL` | `https://www.associae.com.br` | URL do deployment | `http://localhost:3000` |
-| `RESEND_API_KEY` | chave de produção | chave restrita ao domínio | chave restrita ao domínio |
+| `RESEND_API_KEY` | chave de produção | chave de produção | chave restrita ao domínio |
 | `EMAIL_FROM` | remetente verificado | remetente verificado | remetente verificado |
 | `CRON_SECRET` | segredo de produção | segredo próprio | segredo próprio |
 
@@ -203,6 +210,7 @@ Após mudanças de variáveis de ambiente, faça um novo deploy para as funçõe
 - [Modelo de organizações](docs/organizacoes-modelo.md)
 - [Auditoria de autorização e invariantes](docs/auditoria-autorizacao.md)
 - [Diretrizes de UI/UX e acessibilidade](docs/ui-ux-guidelines.md)
+- [Testes](docs/testes.md)
 - [Instruções para agentes](AGENTS.md)
 
 ## Git

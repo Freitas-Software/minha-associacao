@@ -107,6 +107,29 @@ export function RequestOrganizationForm() {
             />
           </Field>
 
+          <Field>
+            <label
+              htmlFor="organization-president-declaration"
+              className="flex items-start gap-2 text-sm"
+            >
+              <input
+                id="organization-president-declaration"
+                name="presidentDeclaration"
+                type="checkbox"
+                required
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+              />
+              <span>
+                Declaro que sou o presidente desta associação e que a ata de
+                eleição anexada comprova essa condição.
+              </span>
+            </label>
+            <FieldDescription>
+              O administrador da plataforma analisará a ata antes de criar a
+              organização.
+            </FieldDescription>
+          </Field>
+
           <Field data-invalid={Boolean(fileError)}>
             <FieldLabel htmlFor="organization-document">
               Ata de eleição
