@@ -1,27 +1,29 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import test from 'node:test'
+import { describeDatabase } from '@tests/support/database-suite'
 import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
+import { afterAll, beforeAll, it } from 'vitest'
 import * as schema from '@/db/schema'
 import { runCleanup } from './cleanup.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
-const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
+describeDatabase(
+  'operational cleanup on PostgreSQL, using temporary tables',
+  () => {
+    const pool = new Pool({
+      connectionString,
+      max: 1,
+      connectionTimeoutMillis: 3000,
+    })
+    const database = drizzle({
+      client: pool,
+      relations: defineRelations(schema),
+    })
 
-test('operational cleanup on PostgreSQL, using temporary tables', {
-  skip: !connectionString || !runDatabaseTests,
-}, async t => {
-  const pool = new Pool({
-    connectionString,
-    max: 1,
-    connectionTimeoutMillis: 3000,
-  })
-  const database = drizzle({ client: pool, relations: defineRelations(schema) })
-
-  try {
-    await pool.query(`
+    beforeAll(async () => {
+      await pool.query(`
       CREATE TEMP TABLE sessions (
         id uuid PRIMARY KEY,
         account_id uuid NOT NULL,
@@ -49,6 +51,11 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
         expires_at timestamptz NOT NULL
       )
     `)
+    })
+
+    afterAll(async () => {
+      await pool.end()
+    })
 
     async function seed() {
       const now = new Date()
@@ -102,63 +109,57 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
       )
     }
 
-    await t.test(
-      'deletes only records beyond the retention window',
-      async () => {
-        await pool.query(
-          'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.email_change_requests, pg_temp.login_rate_limits',
-        )
-        await seed()
+    it('deletes only records beyond the retention window', async () => {
+      await pool.query(
+        'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.email_change_requests, pg_temp.login_rate_limits',
+      )
+      await seed()
 
-        const result = await runCleanup(database)
+      const result = await runCleanup(database)
 
-        assert.deepEqual(result, {
-          sessions: 3,
-          registrationRequests: 1,
-          passwordResetRequests: 1,
-          emailChangeRequests: 1,
-          loginRateLimits: 1,
-        })
+      assert.deepEqual(result, {
+        sessions: 3,
+        registrationRequests: 1,
+        passwordResetRequests: 1,
+        emailChangeRequests: 1,
+        loginRateLimits: 1,
+      })
 
-        const counts = await pool.query<{
-          sessions: number
-          registration_requests: number
-          password_reset_requests: number
-          email_change_requests: number
-          login_rate_limits: number
-        }>(
-          `SELECT
+      const counts = await pool.query<{
+        sessions: number
+        registration_requests: number
+        password_reset_requests: number
+        email_change_requests: number
+        login_rate_limits: number
+      }>(
+        `SELECT
           (SELECT count(*)::int FROM pg_temp.sessions) AS sessions,
           (SELECT count(*)::int FROM pg_temp.registration_requests) AS registration_requests,
           (SELECT count(*)::int FROM pg_temp.password_reset_requests) AS password_reset_requests,
           (SELECT count(*)::int FROM pg_temp.email_change_requests) AS email_change_requests,
           (SELECT count(*)::int FROM pg_temp.login_rate_limits) AS login_rate_limits`,
-        )
+      )
 
-        assert.deepEqual(counts.rows[0], {
-          sessions: 1,
-          registration_requests: 1,
-          password_reset_requests: 1,
-          email_change_requests: 1,
-          login_rate_limits: 1,
-        })
-      },
-    )
+      assert.deepEqual(counts.rows[0], {
+        sessions: 1,
+        registration_requests: 1,
+        password_reset_requests: 1,
+        email_change_requests: 1,
+        login_rate_limits: 1,
+      })
+    })
 
-    await t.test(
-      'is idempotent when there is nothing left to delete',
-      async () => {
-        assert.deepEqual(await runCleanup(database), {
-          sessions: 0,
-          registrationRequests: 0,
-          passwordResetRequests: 0,
-          emailChangeRequests: 0,
-          loginRateLimits: 0,
-        })
-      },
-    )
+    it('is idempotent when there is nothing left to delete', async () => {
+      assert.deepEqual(await runCleanup(database), {
+        sessions: 0,
+        registrationRequests: 0,
+        passwordResetRequests: 0,
+        emailChangeRequests: 0,
+        loginRateLimits: 0,
+      })
+    })
 
-    await t.test('does not delete recent revoked sessions', async () => {
+    it('does not delete recent revoked sessions', async () => {
       await pool.query(
         'TRUNCATE pg_temp.sessions, pg_temp.registration_requests, pg_temp.password_reset_requests, pg_temp.email_change_requests, pg_temp.login_rate_limits',
       )
@@ -186,7 +187,5 @@ test('operational cleanup on PostgreSQL, using temporary tables', {
 
       assert.equal(sessions.rowCount, 1)
     })
-  } finally {
-    await pool.end()
-  }
-})
+  },
+)

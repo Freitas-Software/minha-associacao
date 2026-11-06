@@ -38,6 +38,14 @@ export async function completeRegistration(
       }
     }
 
+    if (result.status === 'organization-closed') {
+      return {
+        success: false,
+        message:
+          'A organização deste pré-cadastro foi encerrada. Procure um responsável pela associação.',
+      }
+    }
+
     if (result.status === 'contact-choice-invalid') {
       return {
         success: false,

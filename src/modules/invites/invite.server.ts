@@ -10,6 +10,7 @@ import {
   isNull,
   lt,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm'
@@ -19,6 +20,7 @@ import {
   invites,
   memberships,
   organizations,
+  provisioningGrants,
   rolePermissions,
   roles,
   users,
@@ -58,9 +60,23 @@ export type CreateInviteResult =
   | { status: 'invalid-document' }
   | { status: 'invalid-expiry' }
   | { status: 'invalid-max-uses' }
+  | { status: 'self-target-not-allowed' }
 
 function normalizeDocument(value: string): string {
   return value.replaceAll(/\D/g, '')
+}
+
+async function getActorDocumentNumber(
+  actorUserId: string,
+  database: typeof db,
+): Promise<string | null> {
+  const [actor] = await database
+    .select({ documentNumber: users.documentNumber })
+    .from(users)
+    .where(eq(users.id, actorUserId))
+    .limit(1)
+
+  return actor?.documentNumber ?? null
 }
 
 export async function createInvite(
@@ -96,6 +112,17 @@ export async function createInvite(
 
   if (maxUses !== null && maxUses <= 0) {
     return { status: 'invalid-max-uses' }
+  }
+
+  if (input.type === 'individual' && access.provisioningGrantId) {
+    const actorDocument = await getActorDocumentNumber(
+      input.actorUserId,
+      database,
+    )
+
+    if (actorDocument && normalizeDocument(actorDocument) === documentNumber) {
+      return { status: 'self-target-not-allowed' }
+    }
   }
 
   let role: {
@@ -162,6 +189,17 @@ export async function createInvite(
   const generated = createInviteToken()
 
   return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization || organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
     const [invite] = await tx
       .insert(invites)
       .values({
@@ -210,6 +248,7 @@ export type ResendInviteResult =
   | { status: 'rate-limited' }
   | { status: 'invalid-role' }
   | { status: 'role-not-allowed' }
+  | { status: 'self-target-not-allowed' }
 
 export async function resendInvite(
   input: {
@@ -246,6 +285,21 @@ export async function resendInvite(
   }
 
   if (invite.revokedAt) return { status: 'already-revoked' }
+
+  if (invite.type === 'individual' && access.provisioningGrantId) {
+    const actorDocument = await getActorDocumentNumber(
+      input.actorUserId,
+      database,
+    )
+
+    if (
+      actorDocument &&
+      normalizeDocument(invite.documentNumber ?? '') ===
+        normalizeDocument(actorDocument)
+    ) {
+      return { status: 'self-target-not-allowed' }
+    }
+  }
 
   const now = new Date()
 
@@ -306,6 +360,17 @@ export async function resendInvite(
   )
 
   return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, invite.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization || organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
     const [current] = await tx
       .select({
         id: invites.id,
@@ -410,6 +475,7 @@ export async function validateInviteToken(
         isNull(invites.revokedAt),
         gt(invites.expiresAt, now),
         or(isNull(invites.maxUses), lt(invites.usesCount, invites.maxUses)),
+        ne(organizations.status, 'closed'),
       ),
     )
     .limit(1)
@@ -463,6 +529,8 @@ export type AcceptInviteResult =
   | { status: 'forbidden' }
   | { status: 'account-unverified' }
   | { status: 'invalid-role' }
+  | { status: 'organization-closed' }
+  | { status: 'self-invite-not-allowed' }
 
 export async function acceptInvite(
   userId: string,
@@ -521,6 +589,31 @@ export async function acceptInvite(
     ) {
       return { status: 'forbidden' as const }
     }
+
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, invite.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization || organization.status === 'closed') {
+      return { status: 'organization-closed' as const }
+    }
+
+    const [grant] = await tx
+      .select({ id: provisioningGrants.id })
+      .from(provisioningGrants)
+      .where(
+        and(
+          eq(provisioningGrants.organizationId, invite.organizationId),
+          eq(provisioningGrants.userId, user.id),
+          isNull(provisioningGrants.revokedAt),
+        ),
+      )
+      .limit(1)
+
+    if (grant) return { status: 'self-invite-not-allowed' as const }
 
     const [existingMembership] = await tx
       .select({ id: memberships.id, status: memberships.status })
@@ -698,11 +791,14 @@ export async function revokeInvite(
 
   const now = new Date()
 
-  await database.transaction(async tx => {
-    await tx
+  return database.transaction(async tx => {
+    const [revoked] = await tx
       .update(invites)
       .set({ revokedAt: now })
-      .where(eq(invites.id, invite.id))
+      .where(and(eq(invites.id, invite.id), isNull(invites.revokedAt)))
+      .returning({ id: invites.id })
+
+    if (!revoked) return { status: 'already-revoked' as const }
 
     await recordAuditEvent(tx, {
       actorUserId,
@@ -711,9 +807,9 @@ export async function revokeInvite(
       entityType: 'invite',
       entityId: invite.id,
     })
-  })
 
-  return { status: 'revoked' }
+    return { status: 'revoked' as const }
+  })
 }
 
 export type InviteManagementData =
@@ -723,7 +819,7 @@ export type InviteManagementData =
         id: string
         legalName: string
         acronym: string
-        status: 'provisioning' | 'active'
+        status: 'provisioning' | 'active' | 'closed'
       }
       roles: Array<{
         id: string

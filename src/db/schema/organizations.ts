@@ -12,6 +12,7 @@ import { users } from './users'
 export const organizationStatus = pgEnum('organization_status', [
   'provisioning',
   'active',
+  'closed',
 ])
 
 export const organizations = pgTable(
@@ -29,6 +30,7 @@ export const organizations = pgTable(
       .notNull()
       .references(() => users.id),
     activatedAt: timestamp('activated_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -13,6 +13,7 @@ import {
   getOrganizationSummary,
   listRoles,
 } from '@/modules/organizations/organization.server'
+import { ChangeDefaultRoleForm } from './components/change-default-role-form'
 import { RoleForm } from './components/role-form'
 
 export const metadata: Metadata = {
@@ -148,6 +149,18 @@ async function RolesContent({ params }: RolesPageProps) {
                     ? 'Todas as permissões configuráveis atuais e futuras.'
                     : describePermissions(role.permissionCodes)}
                 </p>
+
+                {!role.isDefault &&
+                role.isActive &&
+                !role.isDirector &&
+                !role.hasFullAccess &&
+                canManageRole(role) ? (
+                  <ChangeDefaultRoleForm
+                    organizationId={summary.organization.id}
+                    roleId={role.id}
+                    roleName={role.name}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>

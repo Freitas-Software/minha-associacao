@@ -88,3 +88,13 @@ export const deactivateMembershipSchema = z.object({
 export type DeactivateMembershipData = z.output<
   typeof deactivateMembershipSchema
 >
+
+export const closeOrganizationSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, { error: 'Informe o motivo do encerramento.' })
+    .max(500, { error: 'O motivo deve ter no máximo 500 caracteres.' }),
+})
+
+export type CloseOrganizationData = z.output<typeof closeOrganizationSchema>

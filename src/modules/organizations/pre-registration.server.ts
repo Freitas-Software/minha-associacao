@@ -5,6 +5,7 @@ import { db } from '@/db'
 import {
   accounts,
   memberships,
+  organizations,
   registrationContactConflicts,
   registrationRequests,
   roles,
@@ -38,6 +39,7 @@ export type PreRegistrationLinkResult =
   | { status: 'already-member' }
   | { status: 'rate-limited' }
   | { status: 'not-found' }
+  | { status: 'self-target-not-allowed' }
 
 export type PreRegistrationResult =
   | {
@@ -52,6 +54,7 @@ export type PreRegistrationResult =
   | { status: 'already-member' }
   | { status: 'rate-limited' }
   | { status: 'not-found' }
+  | { status: 'self-target-not-allowed' }
 
 function maskEmail(email: string): string {
   const at = email.indexOf('@')
@@ -80,6 +83,22 @@ export async function createPreRegistrationLink(
     return { status: 'forbidden' }
   }
 
+  if (access.provisioningGrantId) {
+    const [actor] = await database
+      .select({ documentNumber: users.documentNumber })
+      .from(users)
+      .where(eq(users.id, input.actorUserId))
+      .limit(1)
+
+    if (
+      actor &&
+      actor.documentNumber.replaceAll(/\D/g, '') ===
+        input.person.documentNumber.replaceAll(/\D/g, '')
+    ) {
+      return { status: 'self-target-not-allowed' }
+    }
+  }
+
   const [role] = await database
     .select({
       id: roles.id,
@@ -102,6 +121,17 @@ export async function createPreRegistrationLink(
   }
 
   const pendingEmail = await database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization || organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
     const documentNumber = input.person.documentNumber
 
     await tx.execute(sql`

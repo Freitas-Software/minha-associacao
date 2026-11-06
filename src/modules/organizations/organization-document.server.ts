@@ -2,7 +2,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { organizationDocuments, users } from '@/db/schema'
+import { organizationDocuments, organizations, users } from '@/db/schema'
 import { recordAuditEvent } from '@/modules/audit/audit.server'
 import {
   getOrganizationAccess,
@@ -110,7 +110,18 @@ export async function uploadOrganizationDocument(
   }
 
   try {
-    return await database.transaction(async tx => {
+    const outcome = await database.transaction(async tx => {
+      const [organization] = await tx
+        .select({ status: organizations.status })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .limit(1)
+        .for('update')
+
+      if (!organization || organization.status === 'closed') {
+        return { status: 'forbidden' as const }
+      }
+
       const [document] = await tx
         .insert(organizationDocuments)
         .values({
@@ -136,6 +147,12 @@ export async function uploadOrganizationDocument(
 
       return { status: 'uploaded' as const, documentId: document.id }
     })
+
+    if (outcome.status === 'forbidden') {
+      await storage.remove(storageKey).catch(() => undefined)
+    }
+
+    return outcome
   } catch (error) {
     await storage.remove(storageKey).catch(() => undefined)
     throw error

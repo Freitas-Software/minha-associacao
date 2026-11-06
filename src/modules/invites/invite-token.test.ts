@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { createInviteToken, hashInviteToken } from './invite-token'
 
 test('invite token has 256 bits and is stored only as a hash', () => {

@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, asc, desc, eq, ilike, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   memberships,
@@ -16,6 +16,9 @@ import { lookupCnpj } from './cnpj.server'
 import {
   ORGANIZATION_REQUEST_DOCUMENT_TYPES,
   ORGANIZATION_REQUEST_MAX_DOCUMENT_BYTES,
+  ORGANIZATION_REQUEST_MAX_PENDING,
+  ORGANIZATION_REQUEST_MAX_PER_WINDOW,
+  ORGANIZATION_REQUEST_WINDOW_MS,
 } from './organization-request-limits'
 
 export type OrganizationRequestStatus = 'pending' | 'approved' | 'rejected'
@@ -36,6 +39,7 @@ export type RequestOrganizationResult =
   | { status: 'invalid-document' }
   | { status: 'duplicate-organization' }
   | { status: 'pending-request' }
+  | { status: 'rate-limited' }
   | { status: 'lookup-failed'; message: string }
 
 export async function requestOrganization(
@@ -93,6 +97,47 @@ export async function requestOrganization(
 
   try {
     return await database.transaction(async tx => {
+      await tx.execute(sql`
+        select pg_advisory_xact_lock(
+          hashtextextended(
+            ${`organization-request:${input.actorUserId}`},
+            0
+          )
+        )
+      `)
+
+      const pendingRequests = await tx
+        .select({ id: organizationRequests.id })
+        .from(organizationRequests)
+        .where(
+          and(
+            eq(organizationRequests.requesterUserId, input.actorUserId),
+            eq(organizationRequests.status, 'pending'),
+          ),
+        )
+        .limit(ORGANIZATION_REQUEST_MAX_PENDING)
+
+      if (pendingRequests.length >= ORGANIZATION_REQUEST_MAX_PENDING) {
+        return { status: 'rate-limited' as const }
+      }
+
+      const windowStart = new Date(Date.now() - ORGANIZATION_REQUEST_WINDOW_MS)
+
+      const recentRequests = await tx
+        .select({ id: organizationRequests.id })
+        .from(organizationRequests)
+        .where(
+          and(
+            eq(organizationRequests.requesterUserId, input.actorUserId),
+            gt(organizationRequests.createdAt, windowStart),
+          ),
+        )
+        .limit(ORGANIZATION_REQUEST_MAX_PER_WINDOW)
+
+      if (recentRequests.length >= ORGANIZATION_REQUEST_MAX_PER_WINDOW) {
+        return { status: 'rate-limited' as const }
+      }
+
       const [request] = await tx
         .insert(organizationRequests)
         .values({

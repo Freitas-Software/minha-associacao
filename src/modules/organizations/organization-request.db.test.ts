@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import test from 'node:test'
+import { describeDatabase } from '@tests/support/database-suite'
 import { defineRelations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
+import { afterAll, beforeAll, it, vi } from 'vitest'
 import * as schema from '@/db/schema'
 import {
   approveOrganizationRequest,
@@ -16,41 +17,46 @@ import {
 } from './organization-request.server'
 
 const connectionString = process.env.TEST_DATABASE_URL
-const runDatabaseTests = process.env.RUN_DATABASE_TESTS === '1'
 
 const FIRST_CNPJ = '11222333000181'
 const SECOND_CNPJ = '04252011000110'
 
-test('organization requests on PostgreSQL, using temporary tables', {
-  skip: !connectionString || !runDatabaseTests,
-}, async t => {
-  const pool = new Pool({
-    connectionString,
-    max: 1,
-    connectionTimeoutMillis: 3000,
-  })
-  const database = drizzle({ client: pool, relations: defineRelations(schema) })
+describeDatabase(
+  'organization requests on PostgreSQL, using temporary tables',
+  () => {
+    const pool = new Pool({
+      connectionString,
+      max: 1,
+      connectionTimeoutMillis: 3000,
+    })
+    const database = drizzle({
+      client: pool,
+      relations: defineRelations(schema),
+    })
 
-  const fetchMock = t.mock.method(
-    globalThis,
-    'fetch',
-    async (input: Parameters<typeof fetch>[0]) => {
-      const url = input instanceof Request ? input.url : input.toString()
-      const cnpj = url.split('/').pop() ?? ''
+    let requesterId: string
+    let adminId: string
 
-      return new Response(
-        JSON.stringify({
-          cnpj,
-          razao_social: 'ASSOCIACAO SOLICITANTE',
-          cnae_fiscal: 9430800,
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+    let userCounter = 0
+    let requestCounter = 0
+
+    beforeAll(async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async (input: Parameters<typeof fetch>[0]) => {
+          const url = input instanceof Request ? input.url : input.toString()
+          const cnpj = url.split('/').pop() ?? ''
+
+          return new Response(
+            JSON.stringify({
+              cnpj,
+              razao_social: 'ASSOCIACAO SOLICITANTE',
+              cnae_fiscal: 9430800,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        },
       )
-    },
-  )
-
-  try {
-    await pool.query(`
+      await pool.query(`
       CREATE TEMP TABLE users (
         id uuid PRIMARY KEY,
         "accountId" uuid,
@@ -78,6 +84,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
         cnpj_verified_at timestamptz,
         created_by_user_id uuid NOT NULL,
         activated_at timestamptz,
+        closed_at timestamptz,
         created_at timestamptz DEFAULT now() NOT NULL,
         updated_at timestamptz DEFAULT now() NOT NULL
       );
@@ -140,7 +147,15 @@ test('organization requests on PostgreSQL, using temporary tables', {
       )
     `)
 
-    let userCounter = 0
+      requesterId = await createUser('requester')
+      adminId = await createUser('admin')
+      await pool.query(
+        'INSERT INTO pg_temp.platform_admins (user_id) VALUES ($1)',
+        [adminId],
+      )
+    })
+
+    const document = Buffer.from('ata de eleição fixture')
 
     async function createUser(label: string) {
       userCounter += 1
@@ -164,20 +179,24 @@ test('organization requests on PostgreSQL, using temporary tables', {
 
       return id
     }
+    it('creates a pending request and validates permissions', async () => {
+      const created = await requestOrganization(
+        {
+          actorUserId: requesterId,
+          cnpj: FIRST_CNPJ,
+          acronym: 'AS',
+          documentName: 'ata.pdf',
+          documentType: 'application/pdf',
+          documentSize: document.byteLength,
+          documentData: document,
+        },
+        database,
+      )
 
-    const requesterId = await createUser('requester')
-    const adminId = await createUser('admin')
-    await pool.query(
-      'INSERT INTO pg_temp.platform_admins (user_id) VALUES ($1)',
-      [adminId],
-    )
+      assert.equal(created.status, 'created')
 
-    const document = Buffer.from('ata de eleição fixture')
-
-    await t.test(
-      'creates a pending request and validates permissions',
-      async () => {
-        const created = await requestOrganization(
+      assert.deepEqual(
+        await requestOrganization(
           {
             actorUserId: requesterId,
             cnpj: FIRST_CNPJ,
@@ -188,80 +207,63 @@ test('organization requests on PostgreSQL, using temporary tables', {
             documentData: document,
           },
           database,
-        )
+        ),
+        { status: 'pending-request' },
+      )
 
-        assert.equal(created.status, 'created')
+      const mine = await listUserOrganizationRequests(requesterId, database)
 
-        assert.deepEqual(
-          await requestOrganization(
-            {
-              actorUserId: requesterId,
-              cnpj: FIRST_CNPJ,
-              acronym: 'AS',
-              documentName: 'ata.pdf',
-              documentType: 'application/pdf',
-              documentSize: document.byteLength,
-              documentData: document,
-            },
-            database,
-          ),
-          { status: 'pending-request' },
-        )
+      assert.equal(mine.length, 1)
+      assert.equal(mine[0].status, 'pending')
 
-        const mine = await listUserOrganizationRequests(requesterId, database)
+      assert.deepEqual(
+        await listPendingOrganizationRequests(requesterId, database),
+        { status: 'forbidden' },
+      )
 
-        assert.equal(mine.length, 1)
-        assert.equal(mine[0].status, 'pending')
+      const pending = await listPendingOrganizationRequests(adminId, database)
 
-        assert.deepEqual(
-          await listPendingOrganizationRequests(requesterId, database),
-          { status: 'forbidden' },
-        )
+      assert.equal(pending.status, 'ok')
 
-        const pending = await listPendingOrganizationRequests(adminId, database)
+      if (pending.status !== 'ok') throw new Error('Expected pending list')
 
-        assert.equal(pending.status, 'ok')
+      assert.equal(pending.requests.length, 1)
+      assert.equal(pending.requests[0].requesterName, 'requester')
 
-        if (pending.status !== 'ok') throw new Error('Expected pending list')
+      if (created.status !== 'created') throw new Error('Expected request')
 
-        assert.equal(pending.requests.length, 1)
-        assert.equal(pending.requests[0].requesterName, 'requester')
-
-        if (created.status !== 'created') throw new Error('Expected request')
-
-        assert.deepEqual(
-          await getOrganizationRequestDocument(
-            requesterId,
-            created.requestId,
-            database,
-          ),
-          { status: 'forbidden' },
-        )
-
-        const adminDocument = await getOrganizationRequestDocument(
-          adminId,
+      assert.deepEqual(
+        await getOrganizationRequestDocument(
+          requesterId,
           created.requestId,
           database,
-        )
+        ),
+        { status: 'forbidden' },
+      )
 
-        assert.equal(adminDocument.status, 'ok')
+      const adminDocument = await getOrganizationRequestDocument(
+        adminId,
+        created.requestId,
+        database,
+      )
 
-        if (adminDocument.status !== 'ok') throw new Error('Expected document')
+      assert.equal(adminDocument.status, 'ok')
 
-        assert.deepEqual(adminDocument.data, document)
+      if (adminDocument.status !== 'ok') throw new Error('Expected document')
 
-        assert.deepEqual(
-          await approveOrganizationRequest(
-            requesterId,
-            created.requestId,
-            database,
-          ),
-          { status: 'forbidden' },
-        )
-      },
-    )
+      assert.deepEqual(adminDocument.data, document)
 
-    await t.test('approves and creates the initial organization', async () => {
+      assert.deepEqual(
+        await approveOrganizationRequest(
+          requesterId,
+          created.requestId,
+          database,
+        ),
+        { status: 'forbidden' },
+      )
+    })
+
+    it('approves and creates the initial organization', async () => {
       const [request] = await pool
         .query<{ id: string }>(
           "SELECT id FROM pg_temp.organization_requests WHERE status = 'pending'",
@@ -345,7 +347,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
       )
     })
 
-    await t.test('rejects a request with a reason', async () => {
+    it('rejects a request with a reason', async () => {
       const created = await requestOrganization(
         {
           actorUserId: requesterId,
@@ -386,7 +388,7 @@ test('organization requests on PostgreSQL, using temporary tables', {
         rejection_reason: 'Ata ilegível',
       })
     })
-    await t.test('lists request history by status', async () => {
+    it('lists request history by status', async () => {
       const approved = await listOrganizationRequests(
         adminId,
         'approved',
@@ -501,8 +503,108 @@ test('organization requests on PostgreSQL, using temporary tables', {
         { status: 'forbidden' },
       )
     })
-  } finally {
-    fetchMock.mock.restore()
-    await pool.end()
-  }
-})
+    it('limits pending requests and requests per day', async () => {
+      const thirdCnpj = '70000000000096'
+      const fourthCnpj = '70000000000177'
+      const limitedRequesterId = await createUser('limited')
+      const windowRequesterId = await createUser('window')
+      const oldWindowRequesterId = await createUser('old-window')
+
+      async function insertRequests(
+        requesterId: string,
+        status: 'pending' | 'rejected',
+        createdAt: Date | null,
+        count: number,
+      ) {
+        for (let index = 0; index < count; index += 1) {
+          requestCounter += 1
+
+          await pool.query(
+            `INSERT INTO pg_temp.organization_requests
+                (id, requester_user_id, cnpj, legal_name, acronym, status,
+                 document_name, document_type, document_size, document_data,
+                 created_at, updated_at)
+               VALUES ($1, $2, $3, 'Solicitante', 'SOL', $4, 'ata.pdf',
+                 'application/pdf', $5, $6, coalesce($7, now()), coalesce($7, now()))`,
+            [
+              randomUUID(),
+              requesterId,
+              String(80000000000000 + requestCounter),
+              status,
+              document.byteLength,
+              document,
+              createdAt,
+            ],
+          )
+        }
+      }
+
+      await insertRequests(limitedRequesterId, 'pending', null, 2)
+      await insertRequests(windowRequesterId, 'rejected', new Date(), 5)
+      await insertRequests(
+        oldWindowRequesterId,
+        'rejected',
+        new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        5,
+      )
+
+      assert.deepEqual(
+        await requestOrganization(
+          {
+            actorUserId: limitedRequesterId,
+            cnpj: thirdCnpj,
+            acronym: 'LIM',
+            documentName: 'ata.pdf',
+            documentType: 'application/pdf',
+            documentSize: document.byteLength,
+            documentData: document,
+          },
+          database,
+        ),
+        { status: 'rate-limited' },
+      )
+
+      const limitedRequests = await pool.query(
+        'SELECT id FROM pg_temp.organization_requests WHERE requester_user_id = $1',
+        [limitedRequesterId],
+      )
+
+      assert.equal(limitedRequests.rowCount, 2)
+
+      assert.deepEqual(
+        await requestOrganization(
+          {
+            actorUserId: windowRequesterId,
+            cnpj: thirdCnpj,
+            acronym: 'WIN',
+            documentName: 'ata.pdf',
+            documentType: 'application/pdf',
+            documentSize: document.byteLength,
+            documentData: document,
+          },
+          database,
+        ),
+        { status: 'rate-limited' },
+      )
+
+      const created = await requestOrganization(
+        {
+          actorUserId: oldWindowRequesterId,
+          cnpj: fourthCnpj,
+          acronym: 'OLD',
+          documentName: 'ata.pdf',
+          documentType: 'application/pdf',
+          documentSize: document.byteLength,
+          documentData: document,
+        },
+        database,
+      )
+
+      assert.equal(created.status, 'created')
+    })
+    afterAll(async () => {
+      vi.restoreAllMocks()
+      await pool.end()
+    })
+  },
+)

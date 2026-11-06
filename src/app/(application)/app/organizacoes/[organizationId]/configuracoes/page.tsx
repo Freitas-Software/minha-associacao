@@ -54,7 +54,9 @@ async function SettingsContent({ params }: SettingsPageProps) {
           >
             {summary.organization.status === 'active'
               ? 'Ativa'
-              : 'Em configuração'}
+              : summary.organization.status === 'closed'
+                ? 'Encerrada'
+                : 'Em configuração'}
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">

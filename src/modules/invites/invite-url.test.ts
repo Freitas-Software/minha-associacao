@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { inviteAcceptanceUrl } from './invite-url'
 
 test('builds an invite URL with the token', () => {

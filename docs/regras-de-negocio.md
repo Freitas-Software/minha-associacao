@@ -1,6 +1,6 @@
 # Regras de negócio — Associae
 
-Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
+Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas a partir da conversa sobre a reconstrução do aplicativo. Complementadas em 27/10/2026 com as decisões técnicas de sessão, tokens, senhas e limites de tentativas. Complementadas em 29/10/2026 com as decisões de encerramento de organização e, em 30/10/2026, com as decisões sobre autoridade do cargo atual, troca do cargo padrão, limites de solicitação de organização e autoingresso do detentor da concessão. Este documento registra comportamento desejado; não comprova que ele já esteja implementado ou validado.
 
 ## Escopo e autoridade
 
@@ -42,6 +42,7 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 
 - O suporte inicial é a associações privadas brasileiras com CNPJ elegível. Cooperativas ficam para uma etapa futura.
 - Somente o presidente da associação ou um membro da administração da plataforma pode iniciar o cadastro de uma organização.
+- A solicitação de criação de organização exige declaração explícita de que o solicitante é presidente. Cada conta pode manter no máximo 2 solicitações pendentes e enviar no máximo 5 solicitações em 24 horas.
 - CNPJ deve ser validado externamente e não pode identificar organizações duplicadas. A razão social vem da consulta; a sigla pode ser ajustada.
 - O CNPJ é consultado na BrasilAPI para obter a razão social e confirmar a existência do CNPJ. A viabilidade de comprovar o vínculo entre o CPF autenticado e o CNPJ ainda precisa ser verificada.
 - O CNPJ é elegível quando o CNAE fiscal pertence ao grupo 94 (atividades de associação).
@@ -50,13 +51,26 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - Na aprovação, a organização é criada em PROVISIONING com um cargo padrão de ingresso, um cargo de presidente com diretoria e acesso completo, e o solicitante como presidente ativo.
 - Após a validação, o sistema sugere e aplica por padrão a inclusão do criador como presidente com acesso completo, informando esse comportamento. O usuário pode alterar essa configuração.
 - A administração da plataforma pode cadastrar somente dados básicos. Alguém da diretoria deverá concluir a configuração posteriormente.
-- Quando o administrador da plataforma inicia a organização, ele indica um CPF para receber uma concessão temporária de configuração. Essa concessão não é vínculo nem acesso completo e termina com a ativação.
+- Quando o administrador da plataforma inicia a organização, ele indica um CPF para receber uma concessão temporária de configuração. Essa concessão não é vínculo nem acesso completo e termina com a ativação. Enquanto a concessão estiver ativa, o detentor não pode convidar, pré-cadastrar nem aceitar convite para ingressar como membro da mesma organização; a ativação revoga os convites pendentes para o CPF de detentores com concessão ativa.
 - A organização começa em configuração (PROVISIONING). O fluxo inclui dados institucionais e CNPJ, estatuto, ata de eleição, configuração dos cargos e composição da diretoria.
 - Estatuto e ata de eleição são obrigatórios para ativação. Os arquivos são armazenados privadamente no Vercel Blob, com limite de 3 MB e formatos PDF, JPEG ou PNG.
 - Antes da ativação, deve existir exatamente um cargo padrão de ingresso ativo, sem acesso completo e fora da diretoria; pelo menos um cargo ativo com acesso completo; e ocupantes ou convites individuais válidos para os cargos ativos da diretoria.
 - A organização só se torna operacional quando houver pelo menos um membro ativo com cargo ativo de acesso completo. Não é necessário que todos os demais convites da diretoria tenham sido aceitos.
 - O acesso temporário de configuração termina com a ativação. Não confundir esse acesso com um vínculo permanente ou com acesso completo.
 - Uma organização operacional não pode ficar sem membros ativos com acesso completo. Operações que removam o último precisam aguardar um sucessor ativo.
+
+## Encerramento de organização
+
+Decisão confirmada pelo responsável pelo produto em 29/10/2026.
+
+- O único estado adicional é `closed`; não há estado de suspensão.
+- Somente organização ativa pode ser encerrada. O encerramento exige a permissão `organization.close`, motivo registrado e evento de auditoria.
+- O encerramento não exclui dados, não desativa a pessoa e não encerra vínculos: a organização passa a somente leitura.
+- Em organização encerrada, os vínculos permanecem ativos e mantêm as permissões de leitura e `organization.close`; as permissões de gestão deixam de valer.
+- O encerramento revoga os convites válidos. A reabertura não restaura esses convites.
+- Enquanto encerrada, a organização não aceita convites, não ativa pré-cadastro, não altera cargos, membros, configurações ou documentos.
+- A reabertura usa a mesma permissão, é auditada e devolve a organização ao estado ativo.
+- O encerramento e a reabertura não concedem poderes ao administrador da plataforma.
 
 ## Cargos, permissões e isolamento
 
@@ -66,6 +80,8 @@ Decisões confirmadas pelo responsável pelo produto em 15/10/2026, consolidadas
 - A plataforma define um catálogo de permissões com códigos estáveis; cada organização distribui essas permissões entre seus cargos.
 - Não atribuir permissões diretamente a usuários ou vínculos.
 - Somente pessoas com acesso completo podem administrar cargos e permissões ou conceder acesso completo. Ninguém pode conceder autoridade que não possui.
+- Alterar o cargo de um vínculo ou desativá-lo exige que o ator possa conceder o cargo atual do alvo, além da permissão de gestão de membros. Ninguém administra um vínculo cujo cargo tenha autoridade que o próprio ator não possui.
+- A organização ativa pode trocar o cargo padrão de ingresso: a troca exige a permissão de gestão de cargos, que o ator possa conceder o novo cargo, e que o novo cargo esteja ativo, não seja de diretoria e não tenha acesso completo. A troca é atômica e auditada.
 - Um cargo de acesso completo possui todas as permissões configuráveis atuais e futuras, mas não ignora isolamento organizacional, propriedade de recursos, estados ou invariantes de negócio.
 - A desativação de um cargo é bloqueada apenas por vínculo ativo ou convite válido. Vínculos inativos e convites revogados, expirados ou esgotados não impedem a desativação e permanecem no histórico.
 - A autorização consulta o estado atual dos vínculos, cargos e permissões. Uma sessão não congela permissões antigas; mudanças devem valer nas verificações subsequentes sem exigir novo login.

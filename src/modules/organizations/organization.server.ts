@@ -1,5 +1,16 @@
 import 'server-only'
-import { and, desc, eq, gt, ilike, isNull, lt, ne, or } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  or,
+} from 'drizzle-orm'
 import { db } from '@/db'
 import {
   invites,
@@ -29,6 +40,7 @@ import { cpfSchema } from '@/modules/identity/registration.schema'
 import { isValidCnpj, normalizeCnpj } from './cnpj'
 import { lookupCnpj } from './cnpj.server'
 import type {
+  CloseOrganizationData,
   CreateRoleData,
   DeactivateMembershipData,
   UpdateOrganizationData,
@@ -180,6 +192,18 @@ export async function updateOrganization(
   }
 
   return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
     const [updated] = await tx
       .update(organizations)
       .set({
@@ -255,6 +279,17 @@ export async function createRole(
 
   try {
     return await database.transaction(async tx => {
+      const [organization] = await tx
+        .select({ status: organizations.status })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .limit(1)
+        .for('update')
+
+      if (!organization || organization.status === 'closed') {
+        return { status: 'forbidden' as const }
+      }
+
       if (input.role.isDefault) {
         const [existingDefault] = await tx
           .select({ id: roles.id })
@@ -329,6 +364,7 @@ export type ActivateOrganizationResult =
   | { status: 'forbidden' }
   | { status: 'not-found' }
   | { status: 'already-active' }
+  | { status: 'not-provisioning' }
   | { status: 'missing-default-role' }
   | { status: 'missing-full-access-role' }
   | { status: 'missing-director-occupant' }
@@ -359,6 +395,9 @@ export async function activateOrganization(
       .for('update')
 
     if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'not-provisioning' as const }
+    }
     if (organization.status === 'active') {
       return { status: 'already-active' as const }
     }
@@ -378,6 +417,12 @@ export async function activateOrganization(
     const defaultRoles = activeRoles.filter(role => role.isDefault)
 
     if (defaultRoles.length !== 1) {
+      return { status: 'missing-default-role' as const }
+    }
+
+    const [defaultRole] = defaultRoles
+
+    if (!defaultRole || defaultRole.isDirector || defaultRole.hasFullAccess) {
       return { status: 'missing-default-role' as const }
     }
 
@@ -457,6 +502,38 @@ export async function activateOrganization(
       .set({ status: 'active', activatedAt: now, updatedAt: now })
       .where(eq(organizations.id, organizationId))
 
+    const granteeDocuments = await tx
+      .select({ documentNumber: users.documentNumber })
+      .from(provisioningGrants)
+      .innerJoin(users, eq(users.id, provisioningGrants.userId))
+      .where(
+        and(
+          eq(provisioningGrants.organizationId, organizationId),
+          isNull(provisioningGrants.revokedAt),
+        ),
+      )
+
+    let revokedGranteeInvites = 0
+
+    if (granteeDocuments.length > 0) {
+      const revoked = await tx
+        .update(invites)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(invites.organizationId, organizationId),
+            isNull(invites.revokedAt),
+            inArray(
+              invites.documentNumber,
+              granteeDocuments.map(grantee => grantee.documentNumber),
+            ),
+          ),
+        )
+        .returning({ id: invites.id })
+
+      revokedGranteeInvites = revoked.length
+    }
+
     await tx
       .update(provisioningGrants)
       .set({ revokedAt: now })
@@ -473,9 +550,141 @@ export async function activateOrganization(
       action: 'organization.activated',
       entityType: 'organization',
       entityId: organizationId,
+      metadata: { revokedGranteeInvites },
     })
 
     return { status: 'activated' as const }
+  })
+}
+
+export type CloseOrganizationResult =
+  | { status: 'closed'; revokedInvites: number }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'not-active' }
+  | { status: 'already-closed' }
+
+export async function closeOrganization(
+  input: {
+    actorUserId: string
+    organizationId: string
+    reason: CloseOrganizationData['reason']
+  },
+  database: typeof db = db,
+): Promise<CloseOrganizationResult> {
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    input.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.organizationClose)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ id: organizations.id, status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'already-closed' as const }
+    }
+    if (organization.status !== 'active') {
+      return { status: 'not-active' as const }
+    }
+
+    const now = new Date()
+
+    const revokedInvites = await tx
+      .update(invites)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(invites.organizationId, input.organizationId),
+          isNull(invites.revokedAt),
+        ),
+      )
+      .returning({ id: invites.id })
+
+    await tx
+      .update(organizations)
+      .set({ status: 'closed', closedAt: now, updatedAt: now })
+      .where(eq(organizations.id, input.organizationId))
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: input.organizationId,
+      action: 'organization.closed',
+      entityType: 'organization',
+      entityId: input.organizationId,
+      metadata: {
+        reason: input.reason,
+        revokedInvites: revokedInvites.length,
+      },
+    })
+
+    return {
+      status: 'closed' as const,
+      revokedInvites: revokedInvites.length,
+    }
+  })
+}
+
+export type ReopenOrganizationResult =
+  | { status: 'reopened' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'not-closed' }
+
+export async function reopenOrganization(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<ReopenOrganizationResult> {
+  const access = await getOrganizationAccess(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.organizationClose)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ id: organizations.id, status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+    if (organization.status !== 'closed') {
+      return { status: 'not-closed' as const }
+    }
+
+    const now = new Date()
+
+    await tx
+      .update(organizations)
+      .set({ status: 'active', closedAt: null, updatedAt: now })
+      .where(eq(organizations.id, organizationId))
+
+    await recordAuditEvent(tx, {
+      actorUserId,
+      organizationId,
+      action: 'organization.reopened',
+      entityType: 'organization',
+      entityId: organizationId,
+    })
+
+    return { status: 'reopened' as const }
   })
 }
 
@@ -484,6 +693,7 @@ export type DeactivateMembershipResult =
   | { status: 'forbidden' }
   | { status: 'not-found' }
   | { status: 'already-inactive' }
+  | { status: 'role-not-allowed' }
   | { status: 'last-full-access-member' }
 
 export async function deactivateMembership(
@@ -518,20 +728,23 @@ export async function deactivateMembership(
 
   return database.transaction(async tx => {
     const [organization] = await tx
-      .select({ id: organizations.id })
+      .select({ id: organizations.id, status: organizations.status })
       .from(organizations)
       .where(eq(organizations.id, target.organizationId))
       .limit(1)
       .for('update')
 
     if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
 
     const [membership] = await tx
       .select({
         id: memberships.id,
         status: memberships.status,
         roleId: memberships.roleId,
-        hasFullAccess: roles.hasFullAccess,
+        currentHasFullAccess: roles.hasFullAccess,
       })
       .from(memberships)
       .innerJoin(
@@ -550,7 +763,20 @@ export async function deactivateMembership(
       return { status: 'already-inactive' as const }
     }
 
-    if (membership.hasFullAccess) {
+    if (
+      !(await canGrantRole(
+        access,
+        {
+          id: membership.roleId,
+          hasFullAccess: membership.currentHasFullAccess,
+        },
+        tx,
+      ))
+    ) {
+      return { status: 'role-not-allowed' as const }
+    }
+
+    if (membership.currentHasFullAccess) {
       const others = await tx
         .select({ id: memberships.id })
         .from(memberships)
@@ -731,7 +957,8 @@ export type OrganizationSummary =
         cnpj: string
         legalName: string
         acronym: string
-        status: 'provisioning' | 'active'
+        status: 'provisioning' | 'active' | 'closed'
+        closedAt: Date | null
       }
       access: {
         roleId: string | null
@@ -764,6 +991,7 @@ export async function getOrganizationSummary(
       legalName: organizations.legalName,
       acronym: organizations.acronym,
       status: organizations.status,
+      closedAt: organizations.closedAt,
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
@@ -914,6 +1142,18 @@ export async function updateRole(
 
   try {
     return await database.transaction(async tx => {
+      const [organization] = await tx
+        .select({ status: organizations.status })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .limit(1)
+        .for('update')
+
+      if (!organization) return { status: 'not-found' as const }
+      if (organization.status === 'closed') {
+        return { status: 'forbidden' as const }
+      }
+
       const [role] = await tx
         .select()
         .from(roles)
@@ -1125,6 +1365,119 @@ export async function updateRole(
   }
 }
 
+export type ChangeDefaultRoleResult =
+  | { status: 'changed'; previousRoleId: string | null }
+  | { status: 'unchanged' }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+  | { status: 'invalid-role' }
+  | { status: 'invalid-default-role' }
+  | { status: 'role-not-allowed' }
+
+export async function changeDefaultRole(
+  input: {
+    actorUserId: string
+    organizationId: string
+    roleId: string
+  },
+  database: typeof db = db,
+): Promise<ChangeDefaultRoleResult> {
+  const access = await getOrganizationAccess(
+    input.actorUserId,
+    input.organizationId,
+    database,
+  )
+
+  if (!access || !hasPermission(access, PERMISSIONS.rolesManage)) {
+    return { status: 'forbidden' }
+  }
+
+  return database.transaction(async tx => {
+    const [organization] = await tx
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1)
+      .for('update')
+
+    if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
+
+    const [role] = await tx
+      .select({
+        id: roles.id,
+        isDirector: roles.isDirector,
+        hasFullAccess: roles.hasFullAccess,
+        isDefault: roles.isDefault,
+        isActive: roles.isActive,
+      })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, input.roleId),
+          eq(roles.organizationId, input.organizationId),
+        ),
+      )
+      .limit(1)
+      .for('update')
+
+    if (!role?.isActive) return { status: 'invalid-role' as const }
+    if (role.isDefault) return { status: 'unchanged' as const }
+    if (role.isDirector || role.hasFullAccess) {
+      return { status: 'invalid-default-role' as const }
+    }
+
+    if (!(await canGrantRole(access, role, tx))) {
+      return { status: 'role-not-allowed' as const }
+    }
+
+    const [currentDefault] = await tx
+      .select({ id: roles.id })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.organizationId, input.organizationId),
+          eq(roles.isDefault, true),
+        ),
+      )
+      .limit(1)
+      .for('update')
+
+    const now = new Date()
+
+    if (currentDefault) {
+      await tx
+        .update(roles)
+        .set({ isDefault: false, updatedAt: now })
+        .where(eq(roles.id, currentDefault.id))
+    }
+
+    await tx
+      .update(roles)
+      .set({ isDefault: true, updatedAt: now })
+      .where(eq(roles.id, role.id))
+
+    await recordAuditEvent(tx, {
+      actorUserId: input.actorUserId,
+      organizationId: input.organizationId,
+      action: 'role.default_changed',
+      entityType: 'role',
+      entityId: role.id,
+      metadata: {
+        fromRoleId: currentDefault?.id ?? null,
+        toRoleId: role.id,
+      },
+    })
+
+    return {
+      status: 'changed' as const,
+      previousRoleId: currentDefault?.id ?? null,
+    }
+  })
+}
+
 export type AssignableRole = {
   id: string
   name: string
@@ -1226,13 +1579,16 @@ export async function updateMembershipRole(
 
   return database.transaction(async tx => {
     const [organization] = await tx
-      .select({ id: organizations.id })
+      .select({ id: organizations.id, status: organizations.status })
       .from(organizations)
       .where(eq(organizations.id, target.organizationId))
       .limit(1)
       .for('update')
 
     if (!organization) return { status: 'not-found' as const }
+    if (organization.status === 'closed') {
+      return { status: 'forbidden' as const }
+    }
 
     const [membership] = await tx
       .select({
@@ -1257,6 +1613,19 @@ export async function updateMembershipRole(
 
     if (membership.status === 'inactive') {
       return { status: 'inactive-membership' as const }
+    }
+
+    if (
+      !(await canGrantRole(
+        access,
+        {
+          id: membership.roleId,
+          hasFullAccess: membership.currentHasFullAccess,
+        },
+        tx,
+      ))
+    ) {
+      return { status: 'role-not-allowed' as const }
     }
 
     const [newRole] = await tx
@@ -1395,7 +1764,7 @@ export type AdminOrganizationListItem = {
   cnpj: string
   legalName: string
   acronym: string
-  status: 'provisioning' | 'active'
+  status: 'provisioning' | 'active' | 'closed'
   createdAt: Date
   activatedAt: Date | null
 }
@@ -1407,7 +1776,7 @@ export type ListAdminOrganizationsResult =
 export async function listAdminOrganizations(
   adminUserId: string,
   options: {
-    status?: 'provisioning' | 'active'
+    status?: 'provisioning' | 'active' | 'closed'
     limit?: number
     offset?: number
   } = {},

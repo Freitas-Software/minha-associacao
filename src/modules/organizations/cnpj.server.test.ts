@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { afterEach, test, vi } from 'vitest'
 import { lookupCnpj } from './cnpj.server'
 
 const CNPJ = '56.443.573/0001-44'
 const NORMALIZED = '56443573000144'
 
-test('lookupCnpj sends a descriptive User-Agent', async t => {
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+test('lookupCnpj sends a descriptive User-Agent', async () => {
   let captured: RequestInit | undefined
 
-  const mock = t.mock.method(
-    globalThis,
-    'fetch',
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
     async (
       _input: Parameters<typeof fetch>[0],
       init?: Parameters<typeof fetch>[1],
@@ -28,25 +30,21 @@ test('lookupCnpj sends a descriptive User-Agent', async t => {
     },
   )
 
-  try {
-    const result = await lookupCnpj(CNPJ)
+  const result = await lookupCnpj(CNPJ)
 
-    assert.deepEqual(result, {
-      cnpj: NORMALIZED,
-      legalName: 'ASSOCIACAO TESTE',
-      cnaeFiscal: '9430800',
-    })
+  assert.deepEqual(result, {
+    cnpj: NORMALIZED,
+    legalName: 'ASSOCIACAO TESTE',
+    cnaeFiscal: '9430800',
+  })
 
-    const headers = captured?.headers as Record<string, string>
+  const headers = captured?.headers as Record<string, string>
 
-    assert.equal(headers['User-Agent'], 'Associae/1.0')
-    assert.equal(headers.Accept, 'application/json')
-  } finally {
-    mock.mock.restore()
-  }
+  assert.equal(headers['User-Agent'], 'Associae/1.0')
+  assert.equal(headers.Accept, 'application/json')
 })
 
-test('lookupCnpj maps rate limiting and provider errors', async t => {
+test('lookupCnpj maps rate limiting and provider errors', async () => {
   const cases = [
     {
       status: 429,
@@ -67,24 +65,16 @@ test('lookupCnpj maps rate limiting and provider errors', async t => {
   ]
 
   for (const item of cases) {
-    const mock = t.mock.method(
-      globalThis,
-      'fetch',
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => new Response('', { status: item.status }),
     )
 
-    try {
-      await assert.rejects(() => lookupCnpj(CNPJ), item.expected)
-    } finally {
-      mock.mock.restore()
-    }
+    await assert.rejects(() => lookupCnpj(CNPJ), item.expected)
   }
 })
 
-test('lookupCnpj rejects a CNPJ outside the association CNAE group', async t => {
-  const mock = t.mock.method(
-    globalThis,
-    'fetch',
+test('lookupCnpj rejects a CNPJ outside the association CNAE group', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
     async () =>
       new Response(
         JSON.stringify({
@@ -96,9 +86,5 @@ test('lookupCnpj rejects a CNPJ outside the association CNAE group', async t => 
       ),
   )
 
-  try {
-    await assert.rejects(() => lookupCnpj(CNPJ), /grupo 94/)
-  } finally {
-    mock.mock.restore()
-  }
+  await assert.rejects(() => lookupCnpj(CNPJ), /grupo 94/)
 })
