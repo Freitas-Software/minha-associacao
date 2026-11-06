@@ -23,7 +23,7 @@ export default defineConfig({
     },
   },
   test: {
-    reporters: process.env.CI ? ['dot', 'github'] : ['default'],
+    reporters: process.env.CI ? ['dot', 'github-actions'] : ['default'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
