@@ -177,13 +177,19 @@ Antes de publicar uma alteração de schema:
 3. Aplique no Neon de produção antes de publicar o código que depende dela.
 4. Nunca edite uma migração já aplicada em produção.
 
-O workflow `Migrate production database` (`.github/workflows/migrate-production.yml`)
-executa `pnpm db:migrate` no Neon de produção a cada push em `main` e também pode
-ser disparado manualmente (`gh workflow run migrate-production.yml`). Ele usa o
-secret `PRODUCTION_DATABASE_URL` do repositório. A Vercel publica o mesmo commit
-em paralelo, então as migrações devem ser compatíveis com o código que já está no
-ar (expand/contract): adicione colunas e tabelas primeiro e remova o formato
-antigo apenas em um deploy posterior.
+O workflow `Deploy production` (`.github/workflows/deploy-production.yml`) aplica
+`pnpm db:migrate` no Neon de produção e, somente depois, dispara o deploy da
+Vercel pelo Deploy Hook. O auto-deploy de `main` fica desligado em `vercel.json`
+(`git.deploymentEnabled`), então nenhum push chega à produção antes das
+migrações; previews continuam automáticos.
+
+Secrets necessários no repositório:
+
+- `PRODUCTION_DATABASE_URL`: connection string direta (não pooled) do Neon de produção.
+- `VERCEL_DEPLOY_HOOK_URL`: URL do Deploy Hook de produção, criado em
+  Vercel → Project → Settings → Git → Deploy Hooks (branch `main`).
+
+Para publicar manualmente: `gh workflow run deploy-production.yml`.
 
 ## Deploy
 

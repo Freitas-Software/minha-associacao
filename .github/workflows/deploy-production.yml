@@ -1,0 +1,53 @@
+name: Deploy production
+
+# Production releases are ordered on purpose:
+#   1. apply pending Drizzle migrations to the production Neon database;
+#   2. only then trigger the Vercel production deployment through a Deploy Hook.
+#
+# Vercel automatic Git deployments for `main` are disabled in vercel.json
+# (`git.deploymentEnabled`), so a push to main never reaches production before
+# the migration job succeeds. Preview deployments keep working normally.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply pending migrations
+        run: pnpm db:migrate
+
+      - name: Trigger production deployment
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_URL is not configured. Production was not deployed."
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 3 --retry-delay 5 \
+            -X POST "$DEPLOY_HOOK_URL"
