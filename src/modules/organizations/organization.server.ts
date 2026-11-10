@@ -1,6 +1,7 @@
 import 'server-only'
 import {
   and,
+  count,
   desc,
   eq,
   gt,
@@ -13,6 +14,7 @@ import {
 } from 'drizzle-orm'
 import { db } from '@/db'
 import {
+  auditEvents,
   invites,
   memberships,
   organizationDocuments,
@@ -46,6 +48,9 @@ import type {
   UpdateOrganizationData,
   UpdateRoleData,
 } from './organization.schema'
+import { ORGANIZATION_DOCUMENT_LABELS } from './organization-document-policy'
+import type { OrganizationReadiness } from './organization-readiness.server'
+import { evaluateOrganizationReadiness } from './organization-readiness.server'
 
 export type CreateOrganizationResult =
   | { status: 'created'; organizationId: string }
@@ -402,100 +407,25 @@ export async function activateOrganization(
       return { status: 'already-active' as const }
     }
 
-    const activeRoles = await tx
-      .select({
-        id: roles.id,
-        isDirector: roles.isDirector,
-        hasFullAccess: roles.hasFullAccess,
-        isDefault: roles.isDefault,
-      })
-      .from(roles)
-      .where(
-        and(eq(roles.organizationId, organizationId), eq(roles.isActive, true)),
-      )
+    const readiness = await evaluateOrganizationReadiness(organizationId, tx)
 
-    const defaultRoles = activeRoles.filter(role => role.isDefault)
-
-    if (defaultRoles.length !== 1) {
+    if (!readiness.defaultRole) {
       return { status: 'missing-default-role' as const }
     }
-
-    const [defaultRole] = defaultRoles
-
-    if (!defaultRole || defaultRole.isDirector || defaultRole.hasFullAccess) {
-      return { status: 'missing-default-role' as const }
-    }
-
-    const fullAccessRoles = activeRoles.filter(role => role.hasFullAccess)
-
-    if (fullAccessRoles.length === 0) {
+    if (!readiness.fullAccessRole) {
       return { status: 'missing-full-access-role' as const }
     }
-
-    const activeMembers = await tx
-      .select({
-        roleId: memberships.roleId,
-        hasFullAccess: roles.hasFullAccess,
-      })
-      .from(memberships)
-      .innerJoin(
-        roles,
-        and(
-          eq(roles.id, memberships.roleId),
-          eq(roles.organizationId, memberships.organizationId),
-        ),
-      )
-      .where(
-        and(
-          eq(memberships.organizationId, organizationId),
-          eq(memberships.status, 'active'),
-          eq(roles.isActive, true),
-        ),
-      )
-
-    const now = new Date()
-
-    const validDirectorInvites = await tx
-      .select({ roleId: invites.roleId })
-      .from(invites)
-      .where(
-        and(
-          eq(invites.organizationId, organizationId),
-          eq(invites.type, 'individual'),
-          isNull(invites.revokedAt),
-          gt(invites.expiresAt, now),
-          or(isNull(invites.maxUses), lt(invites.usesCount, invites.maxUses)),
-        ),
-      )
-
-    const directorRolesWithoutOccupant = activeRoles.filter(
-      role =>
-        role.isDirector &&
-        !activeMembers.some(member => member.roleId === role.id) &&
-        !validDirectorInvites.some(invite => invite.roleId === role.id),
-    )
-
-    if (directorRolesWithoutOccupant.length > 0) {
+    if (!readiness.directorOccupied) {
       return { status: 'missing-director-occupant' as const }
     }
-
-    if (!activeMembers.some(member => member.hasFullAccess)) {
+    if (!readiness.fullAccessMember) {
       return { status: 'missing-full-access-member' as const }
     }
-
-    const documentRows = await tx
-      .select({ type: organizationDocuments.type })
-      .from(organizationDocuments)
-      .where(eq(organizationDocuments.organizationId, organizationId))
-
-    const documentTypes = new Set(documentRows.map(document => document.type))
-
-    if (
-      !documentTypes.has('statute') ||
-      !documentTypes.has('election_minutes')
-    ) {
+    if (!readiness.requiredDocuments) {
       return { status: 'missing-documents' as const }
     }
+
+    const now = new Date()
 
     await tx
       .update(organizations)
@@ -1009,6 +939,243 @@ export async function getOrganizationSummary(
       provisioningGrantId: access.provisioningGrantId,
       permissions: [...access.permissions],
     },
+  }
+}
+
+export type OrganizationOverviewDirector = {
+  name: string
+  roleName: string
+  hasFullAccess: boolean
+  joinedAt: Date
+}
+
+export type OrganizationOverviewEvent = {
+  id: string
+  action: string
+  entityType: string
+  actorName: string | null
+  createdAt: Date
+}
+
+export type OrganizationOverviewDocument = {
+  id: string
+  type: string
+  label: string
+  uploadedByName: string
+  createdAt: Date
+}
+
+export type OrganizationOverview =
+  | {
+      status: 'ok'
+      summary: Extract<OrganizationSummary, { status: 'ok' }>
+      counts: {
+        activeMembers: number | null
+        inactiveMembers: number | null
+        activeRoles: number | null
+        fullAccessRoles: number | null
+        activeInvites: number | null
+        pendingPreRegistrations: number | null
+        documents: number | null
+      }
+      directors: OrganizationOverviewDirector[] | null
+      recentEvents: OrganizationOverviewEvent[] | null
+      documents: OrganizationOverviewDocument[] | null
+      readiness: OrganizationReadiness | null
+    }
+  | { status: 'forbidden' }
+  | { status: 'not-found' }
+
+export async function getOrganizationOverview(
+  actorUserId: string,
+  organizationId: string,
+  database: typeof db = db,
+): Promise<OrganizationOverview> {
+  const summary = await getOrganizationSummary(
+    actorUserId,
+    organizationId,
+    database,
+  )
+
+  if (summary.status === 'not-found') return { status: 'not-found' }
+
+  if (summary.status !== 'ok') return { status: 'forbidden' }
+
+  const permissions = new Set(summary.access.permissions)
+  const can = (permission: string) => permissions.has(permission)
+  const now = new Date()
+
+  const [
+    membershipCounts,
+    roleCounts,
+    activeInvites,
+    pendingPreRegistrations,
+    directors,
+    recentEvents,
+    documents,
+    readiness,
+  ] = await Promise.all([
+    can(PERMISSIONS.membersRead)
+      ? database
+          .select({
+            status: memberships.status,
+            total: count(),
+          })
+          .from(memberships)
+          .where(eq(memberships.organizationId, organizationId))
+          .groupBy(memberships.status)
+      : Promise.resolve(null),
+    can(PERMISSIONS.rolesRead)
+      ? Promise.all([
+          database
+            .select({ total: count() })
+            .from(roles)
+            .where(
+              and(
+                eq(roles.organizationId, organizationId),
+                eq(roles.isActive, true),
+              ),
+            ),
+          database
+            .select({ total: count() })
+            .from(roles)
+            .where(
+              and(
+                eq(roles.organizationId, organizationId),
+                eq(roles.isActive, true),
+                eq(roles.hasFullAccess, true),
+              ),
+            ),
+        ])
+      : Promise.resolve(null),
+    can(PERMISSIONS.invitesManage)
+      ? database
+          .select({ total: count() })
+          .from(invites)
+          .where(
+            and(
+              eq(invites.organizationId, organizationId),
+              isNull(invites.revokedAt),
+              gt(invites.expiresAt, now),
+              or(
+                isNull(invites.maxUses),
+                lt(invites.usesCount, invites.maxUses),
+              ),
+            ),
+          )
+      : Promise.resolve(null),
+    can(PERMISSIONS.membersManage)
+      ? database
+          .select({ total: count() })
+          .from(registrationRequests)
+          .innerJoin(
+            roles,
+            and(
+              eq(roles.id, registrationRequests.roleId),
+              eq(roles.organizationId, registrationRequests.organizationId),
+            ),
+          )
+          .where(
+            and(
+              eq(registrationRequests.organizationId, organizationId),
+              isNull(registrationRequests.consumedAt),
+              isNull(registrationRequests.invalidatedAt),
+            ),
+          )
+      : Promise.resolve(null),
+    can(PERMISSIONS.membersRead)
+      ? database
+          .select({
+            name: users.name,
+            roleName: roles.name,
+            hasFullAccess: roles.hasFullAccess,
+            joinedAt: memberships.joinedAt,
+          })
+          .from(memberships)
+          .innerJoin(users, eq(users.id, memberships.userId))
+          .innerJoin(
+            roles,
+            and(
+              eq(roles.id, memberships.roleId),
+              eq(roles.organizationId, memberships.organizationId),
+            ),
+          )
+          .where(
+            and(
+              eq(memberships.organizationId, organizationId),
+              eq(memberships.status, 'active'),
+              eq(roles.isActive, true),
+              eq(roles.isDirector, true),
+            ),
+          )
+          .orderBy(roles.name, users.name)
+      : Promise.resolve(null),
+    can(PERMISSIONS.auditRead)
+      ? database
+          .select({
+            id: auditEvents.id,
+            action: auditEvents.action,
+            entityType: auditEvents.entityType,
+            actorName: users.name,
+            createdAt: auditEvents.createdAt,
+          })
+          .from(auditEvents)
+          .leftJoin(users, eq(users.id, auditEvents.actorUserId))
+          .where(eq(auditEvents.organizationId, organizationId))
+          .orderBy(desc(auditEvents.createdAt))
+          .limit(5)
+      : Promise.resolve(null),
+    can(PERMISSIONS.organizationRead)
+      ? database
+          .select({
+            id: organizationDocuments.id,
+            type: organizationDocuments.type,
+            uploadedByName: users.name,
+            createdAt: organizationDocuments.createdAt,
+          })
+          .from(organizationDocuments)
+          .innerJoin(
+            users,
+            eq(users.id, organizationDocuments.uploadedByUserId),
+          )
+          .where(eq(organizationDocuments.organizationId, organizationId))
+          .orderBy(desc(organizationDocuments.createdAt))
+      : Promise.resolve(null),
+    summary.organization.status === 'provisioning'
+      ? evaluateOrganizationReadiness(organizationId, database)
+      : Promise.resolve(null),
+  ])
+
+  const activeMembers =
+    membershipCounts?.find(membership => membership.status === 'active')
+      ?.total ?? 0
+  const inactiveMembers =
+    membershipCounts?.find(membership => membership.status === 'inactive')
+      ?.total ?? 0
+
+  return {
+    status: 'ok',
+    summary,
+    counts: {
+      activeMembers: membershipCounts ? activeMembers : null,
+      inactiveMembers: membershipCounts ? inactiveMembers : null,
+      activeRoles: roleCounts ? roleCounts[0][0].total : null,
+      fullAccessRoles: roleCounts ? roleCounts[1][0].total : null,
+      activeInvites: activeInvites ? activeInvites[0].total : null,
+      pendingPreRegistrations: pendingPreRegistrations
+        ? pendingPreRegistrations[0].total
+        : null,
+      documents: documents ? documents.length : null,
+    },
+    directors,
+    recentEvents,
+    documents: documents
+      ? documents.map(document => ({
+          ...document,
+          label: ORGANIZATION_DOCUMENT_LABELS[document.type],
+        }))
+      : null,
+    readiness,
   }
 }
 

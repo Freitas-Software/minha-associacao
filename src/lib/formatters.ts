@@ -20,6 +20,12 @@ export function formatCpf(value: string): string {
   return formatted
 }
 
+export function maskCpf(value: string): string {
+  const digits = onlyDigits(value).slice(-2).padStart(2, '0')
+
+  return `***.***.***-${digits}`
+}
+
 export function formatCnpj(value: string): string {
   const digits = onlyDigits(value).slice(0, 14)
   const segments = [

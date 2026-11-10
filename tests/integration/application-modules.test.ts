@@ -5,14 +5,17 @@ import {
 } from '@tests/support/database'
 import { describeDatabase } from '@tests/support/database-suite'
 import {
+  ADMIN_USER_ID,
   ORGANIZATION,
   ORGANIZATION_ID,
+  PRESIDENT,
   PRESIDENT_USER_ID,
 } from '@tests/support/fixtures'
 import { seedTestData } from '@tests/support/seed'
 import type { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
 import {
+  getOrganizationOverview,
   getOrganizationSummary,
   listRoles,
 } from '@/modules/organizations/organization.server'
@@ -53,6 +56,42 @@ describeDatabase('application modules against the migrated schema', () => {
     expect(summary.organization.legalName).toBe(ORGANIZATION.legalName)
     expect(summary.organization.status).toBe('active')
     expect(summary.access.hasFullAccess).toBe(true)
+  })
+
+  it('returns the overview of the seeded organization', async () => {
+    if (!database) return
+
+    const overview = await getOrganizationOverview(
+      PRESIDENT_USER_ID,
+      ORGANIZATION_ID,
+      database,
+    )
+
+    expect(overview.status).toBe('ok')
+
+    if (overview.status !== 'ok') throw new Error('Expected overview')
+
+    expect(overview.summary.organization.legalName).toBe(ORGANIZATION.legalName)
+    expect(overview.counts).toEqual({
+      activeMembers: 1,
+      inactiveMembers: 0,
+      activeRoles: 2,
+      fullAccessRoles: 1,
+      activeInvites: 0,
+      pendingPreRegistrations: 0,
+      documents: 0,
+    })
+    expect(overview.directors).toHaveLength(1)
+    expect(overview.directors?.[0].name).toBe(PRESIDENT.name)
+    expect(overview.recentEvents).toEqual([])
+    expect(overview.documents).toEqual([])
+    expect(overview.readiness).toBeNull()
+
+    expect(
+      await getOrganizationOverview(ADMIN_USER_ID, ORGANIZATION_ID, database),
+    ).toEqual({
+      status: 'forbidden',
+    })
   })
 
   it('lists the seeded roles ordered by name', async () => {

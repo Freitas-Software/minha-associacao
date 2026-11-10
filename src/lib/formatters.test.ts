@@ -5,6 +5,7 @@ import {
   formatCnpj,
   formatCpf,
   formatPhone,
+  maskCpf,
 } from './formatters'
 
 test('formats CPF progressively and keeps leading zeros', () => {
@@ -13,6 +14,15 @@ test('formats CPF progressively and keeps leading zeros', () => {
   assert.equal(formatCpf('01234567890'), '012.345.678-90')
   assert.equal(formatCpf('012.345.678-90'), '012.345.678-90')
   assert.equal(formatCpf('012345678901234'), '012.345.678-90')
+})
+
+test('masks CPF keeping only the last two digits', () => {
+  assert.equal(maskCpf('01234567890'), '***.***.***-90')
+  assert.equal(maskCpf('012.345.678-00'), '***.***.***-00')
+  assert.equal(maskCpf('***.***.***-42'), '***.***.***-42')
+  assert.equal(maskCpf(''), '***.***.***-00')
+  assert.equal(maskCpf('7'), '***.***.***-07')
+  assert.equal(maskCpf('123'), '***.***.***-23')
 })
 
 test('formats CNPJ progressively', () => {

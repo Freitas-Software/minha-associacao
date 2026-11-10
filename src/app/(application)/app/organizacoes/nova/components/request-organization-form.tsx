@@ -1,7 +1,8 @@
 'use client'
 
+import { SendIcon } from 'lucide-react'
 import Link from 'next/link'
-import { useActionState, useState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -46,6 +47,7 @@ export function RequestOrganizationForm() {
   )
   const [cnpj, setCnpj] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
 
   const documentDescription = fileError
     ? 'organization-document-description organization-document-error'
@@ -56,85 +58,88 @@ export function RequestOrganizationForm() {
       action={formAction}
       aria-busy={pending}
       encType="multipart/form-data"
-      className="space-y-6"
+      className="space-y-8 rounded-lg border bg-background p-5 sm:p-6"
       onSubmit={event => {
         event.preventDefault()
 
-        if (fileError) return
+        if (fileError) {
+          documentInputRef.current?.focus()
+
+          return
+        }
 
         formAction(new FormData(event.currentTarget))
       }}
     >
-      <FieldSet>
-        <FieldLegend>Dados da associação</FieldLegend>
+      <p className="text-sm text-muted-foreground">
+        Todos os campos são obrigatórios.
+      </p>
 
-        <p className="text-sm text-muted-foreground">
-          Todos os campos são obrigatórios.
-        </p>
+      <FieldSet>
+        <FieldLegend>1. Identificação da associação</FieldLegend>
 
         <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="organization-cnpj">CNPJ</FieldLabel>
-            <FormattedInput
-              id="organization-cnpj"
-              name="cnpj"
-              format={formatCnpj}
-              maxDigits={14}
-              maxLength={18}
-              autoComplete="off"
-              placeholder="00.000.000/0000-00"
-              spellCheck={false}
-              required
-              value={cnpj}
-              onValueChange={setCnpj}
-              aria-describedby="organization-cnpj-description"
-            />
-            <FieldDescription id="organization-cnpj-description">
-              A razão social será obtida na consulta à BrasilAPI.
-            </FieldDescription>
-          </Field>
-
-          <Field>
-            <FieldLabel htmlFor="organization-acronym">Sigla</FieldLabel>
-            <Input
-              id="organization-acronym"
-              name="acronym"
-              type="text"
-              maxLength={32}
-              required
-              placeholder="Ex.: AMA"
-              autoComplete="off"
-            />
-          </Field>
-
-          <Field>
-            <label
-              htmlFor="organization-president-declaration"
-              className="flex items-start gap-2 text-sm"
-            >
-              <input
-                id="organization-president-declaration"
-                name="presidentDeclaration"
-                type="checkbox"
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="organization-cnpj">CNPJ</FieldLabel>
+              <FormattedInput
+                id="organization-cnpj"
+                name="cnpj"
+                format={formatCnpj}
+                maxDigits={14}
+                maxLength={18}
+                autoComplete="off"
+                placeholder="00.000.000/0000-00"
+                spellCheck={false}
                 required
-                className="mt-0.5 size-4 shrink-0 accent-primary"
+                value={cnpj}
+                onValueChange={setCnpj}
+                aria-describedby="organization-cnpj-description"
               />
-              <span>
-                Declaro que sou o presidente desta associação e que a ata de
-                eleição anexada comprova essa condição.
-              </span>
-            </label>
-            <FieldDescription>
-              O administrador da plataforma analisará a ata antes de criar a
-              organização.
-            </FieldDescription>
-          </Field>
+              <FieldDescription id="organization-cnpj-description">
+                A consulta à BrasilAPI acontece quando você envia a solicitação.
+                O CNPJ precisa estar ativo e ter CNAE do grupo 94 (atividades de
+                associação).
+              </FieldDescription>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="organization-acronym">Sigla</FieldLabel>
+              <Input
+                id="organization-acronym"
+                name="acronym"
+                type="text"
+                maxLength={32}
+                required
+                placeholder="Ex.: AMA"
+                autoComplete="off"
+                aria-describedby="organization-acronym-description"
+              />
+              <FieldDescription id="organization-acronym-description">
+                Até 32 caracteres. A sigla pode ser ajustada depois, nas
+                configurações da organização.
+              </FieldDescription>
+            </Field>
+          </div>
+        </FieldGroup>
+      </FieldSet>
+
+      <div className="border-t pt-8">
+        <FieldSet>
+          <FieldLegend>2. Ata de eleição e posse</FieldLegend>
+
+          <p className="text-sm text-muted-foreground">
+            Anexe a ata que comprova a sua condição de presidente. A
+            administração da plataforma vai analisar o documento antes de
+            aprovar a criação da organização.
+          </p>
 
           <Field data-invalid={Boolean(fileError)}>
             <FieldLabel htmlFor="organization-document">
               Ata de eleição
             </FieldLabel>
             <Input
+              ref={documentInputRef}
               id="organization-document"
               name="document"
               type="file"
@@ -148,8 +153,7 @@ export function RequestOrganizationForm() {
               }}
             />
             <FieldDescription id="organization-document-description">
-              PDF, JPEG ou PNG com até 3 MB. O administrador da plataforma
-              analisará a ata antes de criar a organização.
+              PDF, JPEG ou PNG, até 3 MB.
             </FieldDescription>
             {fileError ? (
               <p
@@ -161,26 +165,71 @@ export function RequestOrganizationForm() {
               </p>
             ) : null}
           </Field>
-        </FieldGroup>
+        </FieldSet>
+      </div>
 
-        <Button
-          type="submit"
-          disabled={pending || state.status === 'success' || Boolean(fileError)}
-        >
-          {pending ? (
-            <>
-              <Spinner data-icon="inline-start" />
-              Enviando…
-            </>
-          ) : (
-            'Enviar solicitação'
-          )}
-        </Button>
+      <div className="border-t pt-8">
+        <FieldSet>
+          <FieldLegend>3. Declaração de presidência</FieldLegend>
+
+          <Field>
+            <label
+              htmlFor="organization-president-declaration"
+              className="flex items-start gap-2 text-sm"
+            >
+              <input
+                id="organization-president-declaration"
+                name="presidentDeclaration"
+                type="checkbox"
+                required
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+                aria-describedby="organization-president-declaration-description"
+              />
+              <span>
+                Declaro que sou o presidente desta associação e que a ata de
+                eleição anexada comprova essa condição.
+              </span>
+            </label>
+            <FieldDescription id="organization-president-declaration-description">
+              A declaração é obrigatória e será considerada na análise da
+              solicitação.
+            </FieldDescription>
+          </Field>
+        </FieldSet>
+      </div>
+
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            nativeButton={false}
+            render={<Link href="/app/organizacoes" />}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={pending || state.status === 'success'}
+            className="w-full whitespace-normal sm:w-auto"
+          >
+            {pending ? (
+              <>
+                <Spinner data-icon="inline-start" />
+                Enviando…
+              </>
+            ) : (
+              <>
+                Enviar solicitação para análise
+                <SendIcon aria-hidden="true" data-icon="inline-end" />
+              </>
+            )}
+          </Button>
+        </div>
 
         <FormMessage
           status={pending ? 'idle' : state.status}
           message={pending ? '' : state.message}
-          className="mt-4"
         />
 
         {state.status === 'success' ? (
@@ -193,7 +242,7 @@ export function RequestOrganizationForm() {
             </Link>
           </p>
         ) : null}
-      </FieldSet>
+      </div>
     </form>
   )
 }

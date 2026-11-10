@@ -48,6 +48,8 @@ test('opens the roles page with the seeded roles', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Cargos e permissões' }),
   ).toBeVisible()
-  await expect(page.getByText(ORGANIZATION.presidentRoleName)).toBeVisible()
-  await expect(page.getByText(ORGANIZATION.defaultRoleName)).toBeVisible()
+  const main = page.getByRole('main')
+
+  await expect(main.getByText(ORGANIZATION.presidentRoleName)).toBeVisible()
+  await expect(main.getByText(ORGANIZATION.defaultRoleName)).toBeVisible()
 })

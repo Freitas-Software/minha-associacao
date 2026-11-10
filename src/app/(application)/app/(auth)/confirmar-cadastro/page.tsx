@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { io } from 'next/cache'
 import { Suspense } from 'react'
 import { completeRegistrationSchema } from '@/modules/identity/registration.schema'
 import { getRegistrationContactContext } from '@/modules/identity/registration-contact.server'
 import { ConfirmationForm } from './components/confirmation-form'
+import { LinkUnavailable } from './components/link-unavailable'
 
 export const metadata: Metadata = {
   title: 'Confirmar cadastro',
@@ -21,29 +22,22 @@ type ConfirmationPageProps = {
 }
 
 async function ConfirmationContent({ searchParams }: ConfirmationPageProps) {
+  await io()
+
   const params = await searchParams
   const parsedToken = completeRegistrationSchema.shape.token.safeParse(
     params.token,
   )
 
   if (!parsedToken.success) {
-    return (
-      <div className="space-y-4">
-        <p role="alert" className="text-sm text-destructive">
-          O link de confirmação está incompleto ou é inválido.
-        </p>
-
-        <Link
-          href="/app/cadastro"
-          className="text-sm underline underline-offset-4"
-        >
-          Solicitar um novo link
-        </Link>
-      </div>
-    )
+    return <LinkUnavailable />
   }
 
   const contactContext = await getRegistrationContactContext(parsedToken.data)
+
+  if (contactContext === null) {
+    return <LinkUnavailable />
+  }
 
   return (
     <ConfirmationForm
@@ -59,22 +53,17 @@ export default function ConfirmationPage({
 }: ConfirmationPageProps) {
   return (
     <main className="mx-auto w-full max-w-lg">
-      <header className="mb-8 space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Confirme seu cadastro
-        </h1>
-
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          Defina sua senha para confirmar seu email e concluir a criação da
-          conta.
-        </p>
-      </header>
-
       <Suspense
         fallback={
-          <p role="status" className="text-sm text-muted-foreground">
-            Carregando confirmação…
-          </p>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Conclua seu cadastro
+            </h1>
+
+            <p role="status" className="text-sm text-muted-foreground">
+              Carregando confirmação…
+            </p>
+          </div>
         }
       >
         <ConfirmationContent searchParams={searchParams} />

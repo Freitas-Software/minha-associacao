@@ -23,6 +23,7 @@ import {
   createOrganization,
   createRole,
   deactivateMembership,
+  getOrganizationOverview,
   getOrganizationSummary,
   listAdminOrganizations,
   listAssignableRoles,
@@ -2949,6 +2950,237 @@ describeDatabase(
           database,
         ),
         { status: 'forbidden' },
+      )
+    })
+    it('returns the overview with counts, directors, events and readiness', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const memberId = await createUser('member')
+      const inactiveId = await createUser('inactive')
+      const organizationId = await createOrganizationRow(presidentId)
+      const fullAccessRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+      const directorRoleId = await createRoleRow(organizationId, {
+        name: 'Diretoria',
+        isDirector: true,
+      })
+      const defaultRoleId = await createRoleRow(organizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+
+      await createMembershipRow(organizationId, presidentId, fullAccessRoleId)
+      await createMembershipRow(organizationId, memberId, directorRoleId)
+      await createMembershipRow(
+        organizationId,
+        inactiveId,
+        defaultRoleId,
+        'inactive',
+      )
+      await insertRequiredDocuments(organizationId, presidentId)
+
+      await pool.query(
+        `INSERT INTO pg_temp.registration_requests
+          (id, organization_id, role_id, name, email, expires_at)
+         VALUES
+          ($1, $2, $3, 'Pendente', 'pendente@example.test', now() + interval '1 day'),
+          ($4, $2, $3, 'Consumida', 'consumida@example.test', now() + interval '1 day')`,
+        [randomUUID(), organizationId, defaultRoleId, randomUUID()],
+      )
+      await pool.query(
+        "UPDATE pg_temp.registration_requests SET consumed_at = now() WHERE name = 'Consumida'",
+      )
+
+      await pool.query(
+        `INSERT INTO pg_temp.invites
+          (id, organization_id, role_id, type, token_hash, max_uses, uses_count, expires_at, revoked_at, created_by_user_id)
+         VALUES
+          ($1, $2, $3, 'shared', $4, NULL, 0, now() + interval '1 day', NULL, $7),
+          ($5, $2, $3, 'shared', $6, 1, 0, now() + interval '1 day', NULL, $7),
+          ($8, $2, $3, 'shared', $9, NULL, 0, now() - interval '1 day', NULL, $7),
+          ($10, $2, $3, 'shared', $11, NULL, 0, now() + interval '1 day', now(), $7)`,
+        [
+          randomUUID(),
+          organizationId,
+          defaultRoleId,
+          `token-${randomUUID()}`,
+          randomUUID(),
+          `token-${randomUUID()}`,
+          presidentId,
+          randomUUID(),
+          `token-${randomUUID()}`,
+          randomUUID(),
+          `token-${randomUUID()}`,
+        ],
+      )
+
+      const baseTime = Date.now()
+
+      for (let index = 0; index < 6; index += 1) {
+        await pool.query(
+          `INSERT INTO pg_temp.audit_events
+            (id, actor_user_id, organization_id, action, entity_type, created_at)
+           VALUES ($1, $2, $3, $4, 'organization', $5)`,
+          [
+            randomUUID(),
+            presidentId,
+            organizationId,
+            `organization.event_${index}`,
+            new Date(baseTime + index * 1000),
+          ],
+        )
+      }
+
+      const overview = await getOrganizationOverview(
+        presidentId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(overview.status, 'ok')
+
+      if (overview.status !== 'ok') throw new Error('Expected overview')
+
+      assert.equal(overview.summary.organization.id, organizationId)
+      assert.deepEqual(overview.counts, {
+        activeMembers: 2,
+        inactiveMembers: 1,
+        activeRoles: 3,
+        fullAccessRoles: 1,
+        activeInvites: 2,
+        pendingPreRegistrations: 1,
+        documents: 2,
+      })
+      assert.equal(overview.directors?.length, 1)
+      assert.equal(overview.directors?.[0].name, 'member')
+      assert.equal(overview.directors?.[0].roleName, 'Diretoria')
+      assert.equal(overview.directors?.[0].hasFullAccess, false)
+      assert.equal(overview.recentEvents?.length, 5)
+      assert.equal(overview.recentEvents?.[0].action, 'organization.event_5')
+      assert.equal(overview.recentEvents?.[0].actorName, 'president')
+      assert.deepEqual(
+        overview.documents?.map(document => document.label).sort(),
+        ['Ata de eleição', 'Estatuto'],
+      )
+      assert.deepEqual(overview.readiness, {
+        defaultRole: true,
+        fullAccessRole: true,
+        directorOccupied: true,
+        fullAccessMember: true,
+        requiredDocuments: true,
+      })
+
+      assert.deepEqual(
+        await getOrganizationOverview(randomUUID(), organizationId, database),
+        { status: 'forbidden' },
+      )
+    })
+
+    it('gates overview counts and sections by permission', async () => {
+      await reset()
+
+      const managerId = await createUser('manager')
+      const organizationId = await createOrganizationRow(managerId, 'active')
+      const managerRoleId = await createRoleRow(organizationId, {
+        name: 'Gestor',
+      })
+
+      await pool.query(
+        `INSERT INTO pg_temp.role_permissions (role_id, permission_code)
+         VALUES ($1, $2), ($1, $3)`,
+        [managerRoleId, PERMISSIONS.membersRead, PERMISSIONS.organizationRead],
+      )
+      await createMembershipRow(organizationId, managerId, managerRoleId)
+
+      const overview = await getOrganizationOverview(
+        managerId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(overview.status, 'ok')
+
+      if (overview.status !== 'ok') throw new Error('Expected overview')
+
+      assert.equal(overview.counts.activeMembers, 1)
+      assert.equal(overview.counts.inactiveMembers, 0)
+      assert.equal(overview.counts.activeRoles, null)
+      assert.equal(overview.counts.fullAccessRoles, null)
+      assert.equal(overview.counts.activeInvites, null)
+      assert.equal(overview.counts.pendingPreRegistrations, null)
+      assert.equal(overview.counts.documents, 0)
+      assert.deepEqual(overview.directors, [])
+      assert.equal(overview.recentEvents, null)
+      assert.deepEqual(overview.documents, [])
+      assert.equal(overview.readiness, null)
+    })
+
+    it('reports readiness for a provisioning organization with missing invariants', async () => {
+      await reset()
+
+      const presidentId = await createUser('president')
+      const organizationId = await createOrganizationRow(presidentId)
+      const fullAccessRoleId = await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+
+      await createMembershipRow(organizationId, presidentId, fullAccessRoleId)
+
+      const overview = await getOrganizationOverview(
+        presidentId,
+        organizationId,
+        database,
+      )
+
+      assert.equal(overview.status, 'ok')
+
+      if (overview.status !== 'ok') throw new Error('Expected overview')
+
+      assert.deepEqual(overview.readiness, {
+        defaultRole: false,
+        fullAccessRole: true,
+        directorOccupied: true,
+        fullAccessMember: true,
+        requiredDocuments: false,
+      })
+    })
+    it('checks the full-access invariants in declaration order', async () => {
+      await reset()
+
+      const creatorId = await createUser('creator')
+      const granteeId = await createUser('grantee')
+      const memberId = await createUser('member')
+      const organizationId = await createOrganizationRow(creatorId)
+      const defaultRoleId = await createRoleRow(organizationId, {
+        name: 'Associado',
+        isDefault: true,
+      })
+
+      await pool.query(
+        `INSERT INTO pg_temp.provisioning_grants
+            (id, organization_id, user_id, created_by_user_id)
+           VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), organizationId, granteeId, creatorId],
+      )
+      await createMembershipRow(organizationId, memberId, defaultRoleId)
+
+      assert.deepEqual(
+        await activateOrganization(granteeId, organizationId, database),
+        { status: 'missing-full-access-role' },
+      )
+
+      await createRoleRow(organizationId, {
+        name: 'Presidente',
+        hasFullAccess: true,
+      })
+
+      assert.deepEqual(
+        await activateOrganization(granteeId, organizationId, database),
+        { status: 'missing-full-access-member' },
       )
     })
   },

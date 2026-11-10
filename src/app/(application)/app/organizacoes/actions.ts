@@ -649,6 +649,7 @@ export async function requestOrganizationAction(
 
     if (result.status === 'created') {
       revalidatePath('/app/organizacoes')
+      revalidatePath('/app/organizacoes/nova')
       revalidatePath('/app/organizacoes/solicitacoes')
       revalidatePath('/app/admin/solicitacoes')
 
