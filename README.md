@@ -177,6 +177,14 @@ Antes de publicar uma alteração de schema:
 3. Aplique no Neon de produção antes de publicar o código que depende dela.
 4. Nunca edite uma migração já aplicada em produção.
 
+O workflow `Migrate production database` (`.github/workflows/migrate-production.yml`)
+executa `pnpm db:migrate` no Neon de produção a cada push em `main` e também pode
+ser disparado manualmente (`gh workflow run migrate-production.yml`). Ele usa o
+secret `PRODUCTION_DATABASE_URL` do repositório. A Vercel publica o mesmo commit
+em paralelo, então as migrações devem ser compatíveis com o código que já está no
+ar (expand/contract): adicione colunas e tabelas primeiro e remova o formato
+antigo apenas em um deploy posterior.
+
 ## Deploy
 
 - Aplicação: Vercel (projeto `minha-associacao`), runtime Node.js 24.
